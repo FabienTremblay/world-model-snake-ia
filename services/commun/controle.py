@@ -36,11 +36,18 @@ class ControleExecution:
     def basculer_pause(self) -> None:
         if self._pause.is_set():
             self._pause.clear()
+            # En sortie de pause, libère immédiatement tout thread bloqué
+            # dans attendre_autorisation() (qui attend sur _step).
+            # Sans ça, l'UI peut "unpause" mais le runner reste bloqué
+            # jusqu'à un step explicite.
+            self._step.set()
         else:
             self._pause.set()
 
     def demander_step(self) -> None:
-        self._step.set()
+        # Step n'a un sens que si en pause.
+        if self._pause.is_set():
+            self._step.set()
 
     def attendre_autorisation(self) -> None:
         """

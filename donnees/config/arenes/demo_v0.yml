@@ -1,0 +1,43 @@
+version: "snake_arene_v0"
+id: "demo_v0"
+
+grille:
+  largeur: 30
+  hauteur: 12
+
+reproductibilite:
+  seed: 12345
+
+objets:
+  palette:
+    sol:          { teinte: 200, intensite: 40,  motif: 0, clignote: 0 }
+    mur:          { teinte: 210, intensite: 120, motif: 3, clignote: 0 }
+    serpent_corps: { teinte: 120, intensite: 160, motif: 2, clignote: 0 }
+    serpent_tete: { teinte: 120, intensite: 230, motif: 5, clignote: 0 }
+    nourriture:   { teinte: 30,  intensite: 220, motif: 6, clignote: 1 }
+    porte_fermee: { teinte: 300, intensite: 180, motif: 1, clignote: 0 }
+    porte_ouverte: { teinte: 300, intensite: 240, motif: 1, clignote: 1 }
+
+  instances:
+    nourriture:
+      nb: 1
+      spawn: "aleatoire_case_libre"  # v0: informatif (pas de logique additionnelle)
+    porte:
+      position: { x: 1, y: 1 }
+      etat_initial: "fermee"
+
+porte_fin:
+  ouverture:
+    longueur_min: 6
+    score_min: 3
+    tick_min: 0
+
+recompenses:
+  epsilon_par_pas: -0.01
+  bonus_fin: 10.0
+
+capteurs:
+  bruit:
+    niveau_defaut: 0
+    distribution: "uniforme"
+

@@ -71,6 +71,8 @@ class JournalEpisodes:
         run_id: str,
         episode_id: int,
         tick: int,
+        arene_id: str | None = None,
+        seed: int | None = None,
         action_direction: Optional[str],
         niveau_bruit: int,
         score: int,
@@ -88,6 +90,8 @@ class JournalEpisodes:
             "run_id": run_id,
             "episode_id": episode_id,
             "tick": tick,
+            "arene_id": arene_id,
+            "seed": seed,
             "action": action_direction,  # "haut|bas|gauche|droite" ou null
             "niveau_bruit": int(niveau_bruit),
             "score": int(score),

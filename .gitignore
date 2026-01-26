@@ -21,5 +21,5 @@ tmp/
 
 *.zip
 *.txt
-
+htmlcov/
 Archives/

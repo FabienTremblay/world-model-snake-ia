@@ -1,6 +1,7 @@
 # services/runner/app/main.py
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from commun.controle import ControleExecution
 from commun.contrats import Observation
 
 from world_sim.app.monde_snake import ConfigMonde, MondeSnake
+from world_sim.app.arenes_yaml import charger_arene_v0
 from runner.app.journal import JournalEpisodes
 
 
@@ -37,9 +39,27 @@ def boucle_episodes(
     controle: ControleExecution,
     ticks_max: int = 10_000,
 ) -> None:
-    cfg = ConfigMonde(largeur=30, hauteur=12, seed=12345, nb_nourriture=1, niveau_bruit=0)
     # root projet = 3 niveaux au-dessus de services/runner/app
     racine_projet = Path(__file__).resolve().parents[3]
+
+    # arène (donnée)
+    arene_id = os.getenv("SNAKE_ARENE", "demo_v0").strip()
+    path_arene = racine_projet / "donnees" / "config" / "arenes" / f"{arene_id}.yml"
+    ar = charger_arene_v0(path_arene)
+    cfg = ConfigMonde(
+        largeur=ar.largeur,
+        hauteur=ar.hauteur,
+        seed=ar.seed,
+        nb_nourriture=ar.nb_nourriture,
+        niveau_bruit=ar.niveau_bruit_defaut,
+        arene_id=ar.id,
+        epsilon_par_pas=ar.epsilon_par_pas,
+        bonus_fin=ar.bonus_fin,
+        porte_position=ar.porte_position,
+        porte_ouverte_initiale=(ar.porte_etat_initial == "ouverte"),
+        regle_ouverture_porte=ar.regle_ouverture,
+        palette=ar.palette,
+    )
     journal = JournalEpisodes(racine_projet=racine_projet)
     episode_id = 0
     # Identifiant de session (stable pour tout le process)
@@ -73,6 +93,8 @@ def boucle_episodes(
             run_id=run_id,
             episode_id=episode_id,
             tick=monde.tick,
+            arene_id=cfg.arene_id,
+            seed=cfg.seed,
             action_direction=None,
             niveau_bruit=niveau_bruit,
             score=monde.score,
@@ -103,12 +125,12 @@ def boucle_episodes(
             mesure_bruit = _mesurer_bruit(capteurs_canon, capteurs)
             bus.publier(
                 Observation(
-                run_id=run_id,
+                    run_id=run_id,
                     episode_id=episode_id,
                     tick=monde.tick,
                     capteurs=capteurs,
                     rendu_debug=rendu_debug,
-                mesure_bruit=mesure_bruit,
+                    mesure_bruit=mesure_bruit,
                     score=monde.score,
                     longueur=len(monde.serpent),
                     termine=monde.termine,
@@ -119,6 +141,8 @@ def boucle_episodes(
                 run_id=run_id,
                 episode_id=episode_id,
                 tick=monde.tick,
+                arene_id=cfg.arene_id,
+                seed=cfg.seed,
                 action_direction=direction,
                 niveau_bruit=niveau_bruit,
                 score=monde.score,

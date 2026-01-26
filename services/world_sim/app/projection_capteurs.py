@@ -5,17 +5,9 @@ from typing import List, Tuple
 import random
 
 from commun.contrats import Pixel
+from .arenes_yaml import PalettePixels, PALETTE_DEFAUT
 
 Position = Tuple[int, int]
-
-
-# Attributs visuels (signal) — v1 (sans bruit)
-# NB: ces attributs sont un choix de projection; ils ne doivent pas révéler la sémantique.
-PIXEL_SOL = Pixel(teinte=200, intensite=40, motif=0, clignote=0)
-PIXEL_MUR = Pixel(teinte=210, intensite=120, motif=3, clignote=0)
-PIXEL_CORPS = Pixel(teinte=120, intensite=160, motif=2, clignote=0)
-PIXEL_TETE = Pixel(teinte=120, intensite=230, motif=5, clignote=0)
-PIXEL_NOURRITURE = Pixel(teinte=30, intensite=220, motif=6, clignote=1)
 
 
 def projeter_capteurs(
@@ -23,30 +15,38 @@ def projeter_capteurs(
     hauteur: int,
     serpent: List[Position],
     nourritures: set[Position],
+    porte: Position | None = None,
+    porte_ouverte: bool = False,
+    palette: PalettePixels = PALETTE_DEFAUT,
 ) -> List[List[Pixel]]:
     """
     Transforme l'état interne en grille de capteurs (signal).
     Important: aucune étiquette sémantique n'est exposée.
     """
-    capteurs: List[List[Pixel]] = [[PIXEL_SOL for _ in range(largeur)] for _ in range(hauteur)]
+    capteurs: List[List[Pixel]] = [[palette.sol for _ in range(largeur)] for _ in range(hauteur)]
 
     # murs (bordures)
     for x in range(largeur):
-        capteurs[0][x] = PIXEL_MUR
-        capteurs[hauteur - 1][x] = PIXEL_MUR
+        capteurs[0][x] = palette.mur
+        capteurs[hauteur - 1][x] = palette.mur
     for y in range(hauteur):
-        capteurs[y][0] = PIXEL_MUR
-        capteurs[y][largeur - 1] = PIXEL_MUR
+        capteurs[y][0] = palette.mur
+        capteurs[y][largeur - 1] = palette.mur
 
     # nourriture
     for (x, y) in nourritures:
-        capteurs[y][x] = PIXEL_NOURRITURE
+        capteurs[y][x] = palette.nourriture
+
+    if porte is not None:
+        px = palette.porte_ouverte if porte_ouverte else palette.porte_fermee
+        x, y = porte
+        capteurs[y][x] = px
 
     # serpent
     for (x, y) in serpent[:-1]:
-        capteurs[y][x] = PIXEL_CORPS
+        capteurs[y][x] = palette.serpent_corps
     hx, hy = serpent[-1]
-    capteurs[hy][hx] = PIXEL_TETE
+    capteurs[hy][hx] = palette.serpent_tete
 
     return capteurs
 
@@ -60,14 +60,18 @@ def rendre_debug_ascii(capteurs: List[List[Pixel]]) -> List[str]:
     for row in capteurs:
         chars = []
         for px in row:
-            if px == PIXEL_MUR:
+            if px == PALETTE_DEFAUT.mur:
                 chars.append("#")
-            elif px == PIXEL_NOURRITURE:
+            elif px == PALETTE_DEFAUT.nourriture:
                 chars.append("*")
-            elif px == PIXEL_TETE:
+            elif px == PALETTE_DEFAUT.serpent_tete:
                 chars.append("O")
-            elif px == PIXEL_CORPS:
+            elif px == PALETTE_DEFAUT.serpent_corps:
                 chars.append("o")
+            elif px == PALETTE_DEFAUT.porte_fermee:
+                chars.append("D")
+            elif px == PALETTE_DEFAUT.porte_ouverte:
+                chars.append("d")
             else:
                 chars.append(".")
         lignes.append("".join(chars))

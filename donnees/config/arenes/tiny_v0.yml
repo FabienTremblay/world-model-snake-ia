@@ -1,0 +1,41 @@
+version: "snake_arene_v0"
+id: "tiny_v0"
+
+grille:
+  largeur: 12
+  hauteur: 8
+
+reproductibilite:
+  seed: 7
+
+objets:
+  palette:
+    sol:          { teinte: 200, intensite: 40,  motif: 0, clignote: 0 }
+    mur:          { teinte: 210, intensite: 120, motif: 3, clignote: 0 }
+    serpent_corps: { teinte: 120, intensite: 160, motif: 2, clignote: 0 }
+    serpent_tete: { teinte: 120, intensite: 230, motif: 5, clignote: 0 }
+    nourriture:   { teinte: 30,  intensite: 220, motif: 6, clignote: 1 }
+    porte_fermee: { teinte: 300, intensite: 180, motif: 1, clignote: 0 }
+    porte_ouverte: { teinte: 300, intensite: 240, motif: 1, clignote: 1 }
+
+  instances:
+    nourriture:
+      nb: 1
+    porte:
+      position: { x: 2, y: 2 }
+      etat_initial: "fermee"
+
+porte_fin:
+  ouverture:
+    longueur_min: 5
+    score_min: 2
+
+recompenses:
+  epsilon_par_pas: -0.02
+  bonus_fin: 5.0
+
+capteurs:
+  bruit:
+    niveau_defaut: 0
+    distribution: "uniforme"
+
