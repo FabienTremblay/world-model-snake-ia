@@ -1,27 +1,20 @@
-# Python
+# python
 __pycache__/
 *.pyc
-*.pyo
-.env
 .venv/
-venv/
+.venv*/
+.pytest_cache/
+.mypy_cache/
 
-# Data / runs
-data/
-datasets/
-runs/
-logs/
-checkpoints/
-models/
-wandb/
-tensorboard/
+# node / ui
+node_modules/
+dist/
+.next/
+out/
 
-# Notebooks
-.ipynb_checkpoints/
-
-# OS
+# artefacts & runs
+artefacts/
+tmp/
+*.log
+*.sqlite
 .DS_Store
-
-# IDE
-.vscode/
-.idea/

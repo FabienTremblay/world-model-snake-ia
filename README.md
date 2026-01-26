@@ -1,11 +1,7 @@
-# IA-Snake
+# snake-world-model
 
-Experimental Snake environment for testing world models.
+Architecture minimale (v1) : simulateur (`world-sim`), agent (`agent-service`), orchestrateur (`runner`), ui (`ui`).
 
-## Goals
-- Controlled environment
-- Fast iteration
-- Model-based experimentation
+Objectif : permettre un mode entraînement (exploration) et un mode compétition (exploitation), en respectant la séparation "monde réel" vs "monde interne agent".
 
-## Status
-🚧 Work in progress
+> Le docker-compose viendra plus tard dans `infra/compose/`.
