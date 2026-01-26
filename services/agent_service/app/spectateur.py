@@ -70,6 +70,7 @@ class Spectateur:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._f = open(self.path, "a", encoding="utf-8")
 
+        self._dernier_run: Optional[str] = None
         self._dernier_episode: Optional[int] = None
         self._dernier_tick: Optional[int] = None
         self._dernier_checksum: Optional[int] = None
@@ -87,6 +88,8 @@ class Spectateur:
 
         # Détection simple de discontinuités (utile au debug)
         rupture = False
+        if self._dernier_run is not None and str(obs.run_id) != self._dernier_run:
+            rupture = True
         if self._dernier_episode is not None and obs.episode_id != self._dernier_episode:
             rupture = True
         if self._dernier_tick is not None and obs.tick < self._dernier_tick:
@@ -101,6 +104,7 @@ class Spectateur:
 
         ligne = {
             "ts_ns": time.time_ns(),
+            "run_id": str(obs.run_id),
             "episode_id": int(obs.episode_id),
             "tick": int(obs.tick),
             "score": int(obs.score),
@@ -120,6 +124,7 @@ class Spectateur:
         if obs.termine:
             self._f.flush()
 
+        self._dernier_run = str(obs.run_id)
         self._dernier_episode = int(obs.episode_id)
         self._dernier_tick = int(obs.tick)
         self._dernier_checksum = chk

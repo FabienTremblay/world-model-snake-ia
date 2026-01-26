@@ -42,6 +42,8 @@ def boucle_episodes(
     racine_projet = Path(__file__).resolve().parents[3]
     journal = JournalEpisodes(racine_projet=racine_projet)
     episode_id = 0
+    # Identifiant de session (stable pour tout le process)
+    run_id = str(time.time_ns())
 
     while True:
         episode_id += 1
@@ -55,6 +57,7 @@ def boucle_episodes(
         # observation initiale
         bus.publier(
             Observation(
+                run_id=run_id,
                 episode_id=episode_id,
                 tick=monde.tick,
                 capteurs=capteurs,
@@ -67,6 +70,7 @@ def boucle_episodes(
             )
         )
         journal.ecrire_tick(
+            run_id=run_id,
             episode_id=episode_id,
             tick=monde.tick,
             action_direction=None,
@@ -99,6 +103,7 @@ def boucle_episodes(
             mesure_bruit = _mesurer_bruit(capteurs_canon, capteurs)
             bus.publier(
                 Observation(
+                run_id=run_id,
                     episode_id=episode_id,
                     tick=monde.tick,
                     capteurs=capteurs,
@@ -111,6 +116,7 @@ def boucle_episodes(
                 )
             )
             journal.ecrire_tick(
+                run_id=run_id,
                 episode_id=episode_id,
                 tick=monde.tick,
                 action_direction=direction,

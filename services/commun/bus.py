@@ -18,3 +18,7 @@ class BusEtatMemoire:
 
     def dernier(self) -> Optional[Observation]:
         return self._q[-1] if self._q else None
+
+    # compat: ancien nom utilisé par l'agent "spectateur"
+    def derniere_observation(self) -> Optional[Observation]:
+        return self.dernier()

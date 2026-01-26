@@ -29,6 +29,10 @@ fi
 dst="$DIR/replay-$(printf "%04d" "$slot").jsonl"
 cp -f "$SRC" "$dst"
 
+export SLOT="$slot"
+export DST="$dst"
+export MANIFEST="$MANIFEST"
+
 SLOT="$slot" DST="$dst" MANIFEST="$MANIFEST" python - <<'PY'
 import json, os
 from pathlib import Path

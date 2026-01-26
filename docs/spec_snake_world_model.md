@@ -2,9 +2,9 @@
 
 ## 1. Objectif
 Implémenter une version de Snake où l’agent **ne connaît pas les règles à l’avance** et doit les découvrir par interaction avec le monde.
-Le jeu comporte deux modes :
-- **Mode entraînement** : apprentissage des règles et des effets des objets.
-- **Mode compétition** : exploitation des règles apprises pour maximiser le score.
+Le jeu comporte deux **régimes d’épisode** (terme à privilégier plutôt que « mode ») :
+- **Régime entraînement** : apprentissage des règles et des effets des objets.
+- **Régime compétition** : exploitation des règles apprises pour maximiser le score.
 
 Les objets du monde (mur, nourriture, warp, porte) sont **représentés par des attributs visuels** (ex. couleur), sans sémantique explicite fournie à l’agent.
 
@@ -13,7 +13,9 @@ Les objets du monde (mur, nourriture, warp, porte) sont **représentés par des 
 ## 2. Représentation du monde
 
 ### 2.1 Observation (entrée agent)
-Grille 2D de cellules avec attributs visuels :
+Signal perceptif : grille 2D de cellules avec attributs visuels.
+Ce signal est la seule entrée de l’agent.
+Note : un rendu ASCII peut exister **uniquement** en mode développement (debug) et ne doit pas être consommé par l’agent.
 
 ```
 (x,y) -> {
@@ -22,6 +24,8 @@ Grille 2D de cellules avec attributs visuels :
   forme: optionnel
 }
 ```
+Ce signal ne contient aucune information sémantique explicite.
+Toute interprétation (mur, nourriture, porte, etc.) est inférée par l’agent.
 
 Aucune étiquette explicite de type (mur, warp, etc.) n’est transmise à l’agent.
 
@@ -36,7 +40,8 @@ Aucune étiquette explicite de type (mur, warp, etc.) n’est transmise à l’a
 - État de la porte (ouverte/fermée via attribut visuel)
 
 ### 3.2 Règles latentes (θ)
-Les règles sont fixes pendant un épisode mais inconnues de l’agent :
+Les règles sont fixes pendant un épisode, mais peuvent changer entre épisodes.
+Elles sont inconnues de l’agent.
 
 ```
 θ = {
@@ -54,6 +59,17 @@ L’agent maintient une croyance probabiliste :
 b(θ) = P(θ | historique)
 ```
 
+## 3.4 Définition d’arène (configuration)
+Les règles et paramètres d’un épisode devraient être décrits par une **définition d’arène** (ex. fichier YAML),
+afin de rendre explicites et versionnables :
+- dimensions de la grille, vitesse, seed
+- catalogue d’objets et leurs attributs visuels (mur, nourriture, warp, porte)
+- règles latentes activées et leurs paramètres (θ), incluant **porte** et **conditions d’ouverture**
+- récompenses (ε par pas, bonus de fin, valeurs de score)
+- bruit capteurs (niveau, distribution)
+- critères de fin d’épisode
+
+Cette définition d’arène sert d’entrée au simulateur et au runner, et permet de reproduire exactement un épisode.
 ---
 
 ## 4. Dynamique
@@ -80,10 +96,7 @@ b_{t+1}(θ) ∝ b_t(θ) × P(s_{t+1} | s_t, a_t, θ)
 
 ## 5. Récompense
 
-- +1 (ou +10) : ingestion nourriture
-- -1 (ou -10) : collision mortelle
-- -ε (ex. -0.01) par pas (optionnel)
-- Bonus fin si porte atteinte en mode entraînement
+- Bonus de fin si la porte est atteinte (selon l’arène / le régime d’épisode)
 
 ---
 
@@ -104,10 +117,10 @@ Liée aux tirages stochastiques :
 
 ---
 
-## 7. Modes de fonctionnement
+## 7. Régimes d’épisode
 
-### 7.1 Mode entraînement
-Objectif : apprendre θ.
+### 7.1 Régime entraînement
+Objectif : apprendre θ (ou, à défaut, réduire l’incertitude sur les règles).
 
 Politique :
 
@@ -120,8 +133,8 @@ Actions informatives attendues :
 - entrer dans warp
 - atteindre porte
 
-### 7.2 Mode compétition
-Objectif : maximiser le score.
+### 7.2 Régime compétition
+Objectif : maximiser le score (exploitation).
 
 - Utiliser θ* = argmax b(θ)
 - Plus d’exploration volontaire
@@ -129,7 +142,7 @@ Objectif : maximiser le score.
 ---
 
 ## 8. Porte de fin
-
+**Priorité** : compléter le jeu de base avec la porte de fin et ses conditions d’ouverture.
 Objet avec attribut visuel distinct.
 
 Règle latente :
@@ -185,6 +198,20 @@ Le système implémente un agent tel que :
 Les règles sont **inférées**, pas codées côté agent.
 
 ---
+## 13. Replay et traçabilité
+
+### 13.1 Outils d’observation (spectateur)
+Un **agent spectateur** peut être utilisé pour calculer des métriques sur le signal et sur la trace
+(ex. checksum, variance, détection de ruptures), **sans agir** et sans influencer le monde.
+Il sert à la validation, au debugging et à l’analyse, pas à la décision.
+
+Chaque interaction produit une trace journalisée (tick par tick) contenant
+le signal perceptif et les métadonnées d’exécution.
+
+Ces traces peuvent être rejouées afin de :
+- comparer agent et humain à signal égal
+- analyser les erreurs de prédiction
+- mesurer la stabilité des inférences sur un même signal
 
 Fin du document.
 

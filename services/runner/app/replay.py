@@ -77,6 +77,14 @@ def _lire_jsonl(path: Path) -> Iterable[dict]:
                 continue
             yield json.loads(line)
 
+def _detecter_dernier_run_id(journal_path: Path) -> Optional[str]:
+    dernier: Optional[str] = None
+    for evt in _lire_jsonl(journal_path):
+        rid = evt.get("run_id")
+        if rid:
+            dernier = str(rid)
+    return dernier
+
 
 def boucle_replay(
     bus: BusEtatMemoire,
@@ -96,6 +104,8 @@ def boucle_replay(
     catalogue = CatalogueReplays(racine_projet)
 
     while True:
+        run_id_force = os.getenv("SNAKE_RUN_ID", "").strip() or None
+        run_id_cible = run_id_force or _detecter_dernier_run_id(journal_path)
         idx = 0
         for evt in _lire_jsonl(journal_path):
             # switch de replay demandé ?
@@ -109,6 +119,11 @@ def boucle_replay(
 
             if controle.consommer_reset():
                 break
+
+            # Filtrage par run_id (si disponible)
+            if run_id_cible is not None:
+                if str(evt.get("run_id", "")) != str(run_id_cible):
+                    continue
 
             # IMPORTANT:
             # on publie la 1re frame immédiatement (même si on démarre en pause),
@@ -127,16 +142,18 @@ def boucle_replay(
             )
             rendu_debug = _rendre_debug_depuis_capteurs(capteurs)
 
+            run_id = str(evt.get("run_id") or f"replay:{journal_path.name}")
             obs = Observation(
-                int(evt.get("episode_id", 0)),          # episode_id
-                int(evt.get("tick", 0)),                # tick
-                capteurs,                               # capteurs
-                rendu_debug,                            # rendu_debug
-                f"REPLAY file={journal_path.name} frame={idx} episode={evt.get('episode_id')} action={evt.get('action')}",  # mesure_bruit
-                int(evt.get("score", 0)),               # score
-                int(evt.get("longueur", 0)),            # longueur
-                bool(evt.get("termine", False)),         # termine
-                evt.get("raison_fin"),                  # raison_fin
+                run_id=str(evt.get("run_id") or (run_id_cible or f"legacy:{journal_path.name}")),
+                episode_id=int(evt.get("episode_id", 0)),
+                tick=int(evt.get("tick", 0)),
+                capteurs=capteurs,
+                rendu_debug=rendu_debug,
+                mesure_bruit=f"REPLAY run={evt.get('run_id', run_id_cible)} file={journal_path.name} frame={idx} episode={evt.get('episode_id')} action={evt.get('action')}",
+                score=int(evt.get("score", 0)),
+                longueur=int(evt.get("longueur", 0)),
+                termine=bool(evt.get("termine", False)),
+                raison_fin=evt.get("raison_fin"),
             )
             bus.publier(obs)
 

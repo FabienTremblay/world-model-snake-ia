@@ -22,6 +22,7 @@ class Pixel:
 
 @dataclass(frozen=True)
 class Observation:
+    run_id: str
     episode_id: int
     tick: int
     capteurs: List[List[Pixel]]  # H x W (signal brut)

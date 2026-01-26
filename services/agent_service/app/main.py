@@ -18,7 +18,7 @@ def _boucle_spectateur(bus: BusEtatMemoire, spectateur: Spectateur) -> None:
     while True:
         obs = bus.dernier()
         if obs is not None:
-            cle = (obs.episode_id, obs.tick)
+            cle = (obs.run_id, obs.episode_id, obs.tick)
             if cle != dernier_cle:
                 spectateur.traiter(obs)
                 dernier_cle = cle

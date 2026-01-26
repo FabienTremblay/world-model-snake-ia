@@ -68,6 +68,7 @@ class JournalEpisodes:
     def ecrire_tick(
         self,
         *,
+        run_id: str,
         episode_id: int,
         tick: int,
         action_direction: Optional[str],
@@ -84,6 +85,7 @@ class JournalEpisodes:
         capteurs_b64, largeur, hauteur, fmt = encoder_capteurs_b64(capteurs)
         ligne = {
             "ts_ns": time.time_ns(),
+            "run_id": run_id,
             "episode_id": episode_id,
             "tick": tick,
             "action": action_direction,  # "haut|bas|gauche|droite" ou null

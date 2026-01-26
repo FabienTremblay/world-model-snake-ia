@@ -89,7 +89,7 @@ class SnakeTui(App):
             grille.update("(en attente...)")
         else:
             hud.update(
-                f"mode: {mode} | episode: {obs.episode_id} | tick: {obs.tick} | score: {obs.score} | longueur: {obs.longueur} | {etat_pause} | delai: {delai_ms}ms | bruit: {niveau_bruit}"
+                f"mode: {mode} | run: {obs.run_id} | episode: {obs.episode_id} | tick: {obs.tick} | score: {obs.score} | longueur: {obs.longueur} | {etat_pause} | delai: {delai_ms}ms | bruit: {niveau_bruit}"
                 + (f" | {obs.mesure_bruit}" if obs.mesure_bruit else "")
                 + (f" | termine: {obs.raison_fin}" if obs.termine else "")
             )
