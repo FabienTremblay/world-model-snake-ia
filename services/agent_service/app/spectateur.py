@@ -12,8 +12,8 @@ from commun.contrats import Observation, Pixel
 
 def _stats_intensite(capteurs: List[List[Pixel]]) -> tuple[float, float, float]:
     """
-    Retourne (moyenne, variance, proportion_actifs)
-    - actif = intensite > 0
+    Retourne (moyenne, variance, proportion_nonvide)
+    - nonvide = motif != 0
     """
     h = len(capteurs)
     w = len(capteurs[0]) if h else 0
@@ -23,17 +23,17 @@ def _stats_intensite(capteurs: List[List[Pixel]]) -> tuple[float, float, float]:
 
     s = 0.0
     s2 = 0.0
-    actifs = 0
+    nonvides = 0
     for y in range(h):
         for x in range(w):
             v = float(capteurs[y][x].intensite)
             s += v
             s2 += v * v
-            if v > 0:
-                actifs += 1
+            if int(capteurs[y][x].motif) != 0:
+                nonvides += 1
     mu = s / n
     var = (s2 / n) - (mu * mu)
-    return mu, var, actifs / n
+    return mu, var, nonvides / n
 
 
 def _checksum_rapide(capteurs: List[List[Pixel]]) -> int:
@@ -72,6 +72,7 @@ class Spectateur:
 
         self._dernier_episode: Optional[int] = None
         self._dernier_tick: Optional[int] = None
+        self._dernier_checksum: Optional[int] = None
 
     def fermer(self) -> None:
         try:
@@ -81,7 +82,7 @@ class Spectateur:
             pass
 
     def traiter(self, obs: Observation) -> None:
-        mu, var, prop_actifs = _stats_intensite(obs.capteurs)
+        mu, var, prop_nonvide = _stats_intensite(obs.capteurs)
         chk = _checksum_rapide(obs.capteurs)
 
         # Détection simple de discontinuités (utile au debug)
@@ -90,6 +91,13 @@ class Spectateur:
             rupture = True
         if self._dernier_tick is not None and obs.tick < self._dernier_tick:
             rupture = True
+
+        # Baseline prédictive v0:
+        # prédire que le prochain checksum sera identique au précédent.
+        chk_pred = self._dernier_checksum
+        err_pred = None
+        if chk_pred is not None and not rupture:
+            err_pred = 0 if chk == chk_pred else 1
 
         ligne = {
             "ts_ns": time.time_ns(),
@@ -101,8 +109,10 @@ class Spectateur:
             "raison_fin": obs.raison_fin,
             "mu_int": mu,
             "var_int": var,
-            "prop_actifs": prop_actifs,
+            "prop_nonvide": prop_nonvide,
             "checksum": chk,
+            "checksum_pred": chk_pred,
+            "err_pred": err_pred,
             "rupture": rupture,
             "note": obs.mesure_bruit,  # pratique: inclut "REPLAY ..." si présent
         }
@@ -112,4 +122,5 @@ class Spectateur:
 
         self._dernier_episode = int(obs.episode_id)
         self._dernier_tick = int(obs.tick)
+        self._dernier_checksum = chk
 
