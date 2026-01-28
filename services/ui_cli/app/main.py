@@ -8,7 +8,7 @@ from pathlib import Path
 
 from agent_service.app.agents import AgentAleatoire, AgentCuriositeTabulaire
 from agent_service.app.agents.contrats import ContexteDecision, IAgent
-from agent_service.app.spectateur import _checksum_rapide
+from agent_service.app.modele_monde.latent_v1 import encoder_latent, ModeLatent
 
 from runner.app.journal import JournalEpisodes
 from world_sim.app.arenes_yaml import charger_arene_v0
@@ -45,7 +45,7 @@ def _fabriquer_agent(args: argparse.Namespace) -> IAgent:
             w_entropie=float(args.w_entropie),
             w_inconfiance=float(args.w_inconfiance),
         )
-        return AgentCuriositeTabulaire(seed=args.seed, params=params)
+        return AgentCuriositeTabulaire(seed=args.seed, params=params, mode_latent=args.latent)
     raise SystemExit(f"agent inconnu: {args.agent!r} (attendus: aleatoire, curiosite_tabulaire)")
 
 
@@ -103,6 +103,13 @@ def construire_parser() -> argparse.ArgumentParser:
         type=str,
         default="aleatoire",
         help="Agent: aleatoire | curiosite_tabulaire",
+    )
+    ap.add_argument(
+    "--latent",
+    type=str,
+    default="checksum",
+    choices=["checksum", "discret_v1"],
+    help="État latent: checksum (cours 1) | discret_v1 (cours 2, plus invariant au bruit).",
     )
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument(
@@ -226,12 +233,12 @@ def main(argv: list[str] | None = None) -> None:
                     hauteur=cfg.hauteur,
                 )
                 action = agent.choisir_action(capteurs, ctx)
-                z_avant = _checksum_rapide(capteurs)
+                z_avant = encoder_latent(capteurs, args.latent)
 
                 # appliquer l'action => tick t+1
                 monde.step(direction=action)
                 capteurs_apres, _ = monde.observer(niveau_bruit=cfg.niveau_bruit)
-                z_apres = _checksum_rapide(capteurs_apres)
+                z_apres = encoder_latent(capteurs_apres, args.latent)
 
                 # journaliser tick t+1 avec action appliquée
                 journal.ecrire_tick(

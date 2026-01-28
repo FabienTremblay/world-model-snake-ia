@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """Agent explorateur guidé par un world model tabulaire (offline/CLI).
 
-- utilise un état latent minimal: checksum(capteurs)
+- utilise un état latent paramétrable: checksum(capteurs) ou discret_v1(capteurs)
 - score d'action:
   - très élevé si la clé (z, action) est inconnue
   - sinon combinaison de l'entropie et de (1 - confiance)
@@ -16,7 +16,7 @@ from typing import Tuple
 
 from commun.contrats import Pixel
 
-from agent_service.app.spectateur import _checksum_rapide
+from agent_service.app.modele_monde.latent_v1 import ModeLatent, encoder_latent
 from agent_service.app.modele_monde.tabulaire_v1 import ModeleMondeTabulaireV1
 
 from .contrats import ContexteDecision, IAgent
@@ -36,9 +36,15 @@ class ParametresCuriosite:
 class AgentCuriositeTabulaire(IAgent):
     """Choisit l'action la plus informative selon un modèle tabulaire."""
 
-    def __init__(self, seed: int | None = None, params: ParametresCuriosite | None = None) -> None:
+    def __init__(
+        self,
+        seed: int | None = None,
+        params: ParametresCuriosite | None = None,
+        mode_latent: ModeLatent = "checksum",
+    ) -> None:
         self.rng = random.Random(seed)
         self.params = params or ParametresCuriosite()
+        self.mode_latent: ModeLatent = mode_latent
         self.modele = ModeleMondeTabulaireV1()
 
     def choisir_action(self, capteurs: list[list[Pixel]], contexte: ContexteDecision) -> str:
@@ -46,7 +52,7 @@ class AgentCuriositeTabulaire(IAgent):
         if self.rng.random() < float(self.params.epsilon):
             return self.rng.choice(list(self.params.actions))
 
-        z = _checksum_rapide(capteurs)
+        z = encoder_latent(capteurs, self.mode_latent)
 
         meilleur_score = float("-inf")
         meilleures: list[str] = []
