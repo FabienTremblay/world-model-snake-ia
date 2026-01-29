@@ -8,6 +8,8 @@ from typing import Dict, Iterable, Iterator, Optional, Tuple
 from runner.app.replay import decoder_capteurs_b64
 from agent_service.app.spectateur import _checksum_rapide
 from agent_service.app.modele_monde.tabulaire_v1 import ModeleMondeTabulaireV1
+from agent_service.app.modele_monde.recompense_tabulaire_v1 import ModeleRecompenseTabulaireV1
+from agent_service.app.modele_monde.termination_tabulaire_v1 import ModeleTerminaisonTabulaireV1
 
 
 def _lire_jsonl(path: Path) -> Iterator[dict]:
@@ -124,3 +126,39 @@ def entrainer_modele_tabulaire_v1(journal_path: Path, champ_latent: str = "check
         "stats_modele": modele.stats(),
     }
     return modele, rapport
+
+
+def entrainer_utilite_tabulaire_v1(
+    journal_path: Path,
+    champ_latent: str = "checksum",
+) -> tuple[ModeleRecompenseTabulaireV1, ModeleTerminaisonTabulaireV1, dict]:
+    """Apprend deux modèles tabulaires d'utilité, offline depuis le journal.
+
+    - récompense: (etat, action, etat_suivant) -> distribution(delta_score)
+    - terminaison: (etat, action, etat_suivant) -> P(termine)
+
+    delta_score = score[t] - score[t-1]
+    termine = evt["termine"] (observé après la transition)
+    """
+    modele_r = ModeleRecompenseTabulaireV1()
+    modele_t = ModeleTerminaisonTabulaireV1()
+    nb = 0
+
+    for prev_evt, evt, etat_prev, etat, action in iterer_transitions(journal_path, champ_latent=champ_latent):
+        try:
+            delta_score = int(evt.get("score", 0)) - int(prev_evt.get("score", 0))
+            termine = bool(evt.get("termine", False))
+        except Exception:
+            continue
+
+        modele_r.apprendre(etat_prev, action, etat, int(delta_score))
+        modele_t.apprendre(etat_prev, action, etat, bool(termine))
+        nb += 1
+
+    rapport = {
+        "journal_path": str(journal_path),
+        "nb_obs": int(nb),
+        "stats_modele_recompense": modele_r.stats(),
+        "stats_modele_termination": modele_t.stats(),
+    }
+    return modele_r, modele_t, rapport

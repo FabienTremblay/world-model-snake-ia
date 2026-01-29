@@ -36,6 +36,11 @@ def _fabriquer_agent(args: argparse.Namespace) -> IAgent:
     nom = args.agent.strip().lower()
     if nom == "aleatoire":
         return AgentAleatoire(seed=args.seed, epsilon=float(args.epsilon))
+    if nom == "planif_mpc_tabulaire":
+        from agent_service.app.agents.agent_planif_mpc_tabulaire import AgentPlanifMPCTabulaire
+
+        # paramètres conservateurs par défaut (cours 4)
+        return AgentPlanifMPCTabulaire(seed=args.seed, mode_latent=args.latent)
     if nom == "curiosite_tabulaire":
         # epsilon = exploration aléatoire (epsilon-greedy)
         from agent_service.app.agents.agent_curiosite_tabulaire import ParametresCuriosite
@@ -47,7 +52,7 @@ def _fabriquer_agent(args: argparse.Namespace) -> IAgent:
             w_inconfiance=float(args.w_inconfiance),
         )
         return AgentCuriositeTabulaire(seed=args.seed, params=params, mode_latent=args.latent)
-    raise SystemExit(f"agent inconnu: {args.agent!r} (attendus: aleatoire, curiosite_tabulaire)")
+    raise SystemExit(f"agent inconnu: {args.agent!r} (attendus: aleatoire, curiosite_tabulaire, planif_mpc_tabulaire)")
 
 
 def _ecrire_metrics(
@@ -159,6 +164,7 @@ def main(argv: list[str] | None = None) -> None:
 
     path_arene = _resoudre_path_arene(racine, args.arene)
     ar = charger_arene_v0(path_arene)
+    os.environ["SNAKE_ARENE_PATH"] = str(path_arene)
 
     # config monde (identique à runner/app/main.py, sauf overrides CLI)
     base_seed = int(args.seed) if args.seed is not None else int(ar.seed)
