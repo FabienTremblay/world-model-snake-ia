@@ -17,7 +17,7 @@ Ce cours prolonge ainsi les **Cours 1 et 2** en changeant **uniquement** la mani
 - Cours 2 : `z = discret_v1(capteurs)` (invariant au bruit, défini à la main)
 - **Cours 3 : `z = Q(E(capteurs))` (latent appris, puis quantifié)**
 
-L’objectif du Cours 3 n’est pas d’obtenir un “meilleur score” au jeu, mais de faire apparaître un phénomène central des world models :
+L’objectif du Cours 3 n’est pas d’obtenir un "meilleur score" au jeu, mais de faire apparaître un phénomène central des world models :
 > l’**incertitude** (entropie non nulle) qui émerge quand l’observation est partielle et que la représentation regroupe des situations.
 
 ---
@@ -48,11 +48,11 @@ L’objectif du Cours 3 n’est pas d’obtenir un “meilleur score” au jeu, 
 > Comment faire apparaître l’incertitude **sans la forcer artificiellement** ?
 
 On ne veut pas :
-- injecter du bruit “pour tricher”
+- injecter du bruit "pour tricher"
 - dégrader volontairement le modèle
 
 On veut :
-- apprendre une représentation qui regroupe automatiquement les situations “équivalentes” du point de vue de la dynamique,
+- apprendre une représentation qui regroupe automatiquement les situations "équivalentes" du point de vue de la dynamique,
 - ce qui fait apparaître naturellement des futurs multiples possibles pour un même latent.
 
 ---
@@ -87,18 +87,18 @@ Ce choix est minimal, efficace et pédagogique.
 
 Pour chaque transition du batch :
 
-- similarité `sim(y_t, z_{t+1})` = cosinus (par défaut)
-- température `τ` (par défaut 0.2)
+- similarité $sim(y_t, z_{t+1})$ = cosinus (par défaut)
+- température $\tau$ (par défaut 0.2)
 
 On minimise :
 
-\[
+$$
 \mathcal{L} = -\log \frac{\exp(sim(y_t, z_{t+1})/\tau)}
-{\sum_{k=1}^{B}\exp(sim(y_t, z_{t+1}^{(k)})/\tau)}
-\]
+{\sum_{k=1}^{B} \exp(sim(y_t, z_{t+1}^{(k)})/\tau)}
+$$
 
 **Interprétation :**
-> apprendre un latent où “ce qui compte” est ce qui aide à prédire le futur, pas ce qui ressemble visuellement.
+> apprendre un latent où "ce qui compte" est ce qui aide à prédire le futur, pas ce qui ressemble visuellement.
 
 ---
 
@@ -111,9 +111,9 @@ Le modèle tabulaire exige un identifiant discret. On adopte :
 
 Donc l’état latent final est :
 
-\[
+$$
 z^{disc}_t = Q(E(obs_t)) \in \{0, \dots, k-1\}
-\]
+$$
 
 ---
 
@@ -128,7 +128,7 @@ donc le tabulaire observe :
 
 - même clé `(z^{disc}, a)` → plusieurs successeurs possibles
 
-➡️ **entropie > 0** (incertitude irréductible), même si le monde “réel” est déterministe.
+➡️ **entropie > 0** (incertitude irréductible), même si le monde "réel" est déterministe.
 
 C’est la signature attendue d’un world model dans un monde **partiellement observable**.
 
@@ -218,10 +218,10 @@ Avec une représentation fondée sur un **histogramme global** des capteurs (24 
 - exactitude conditionnelle ≈ 0.999  
 - entropie moyenne ≈ 0.01  
 
-Le monde interne s’effondre en un quasi-automate déterministe.
+Le monde interne s’effondre en un quasi-automate déterministe. Il aurait pu distinguer beaucoup de situations internes différentes (k=514). Le modèle écrase une grande variété de situations réelles dans quelques états internes indiscernables.
 
 **Conclusion intermédiaire** :  
-une représentation trop pauvre impose artificiellement un monde déterministe.
+une représentation trop pauvre impose artificiellement un monde déterministe. Plusieurs situations différentes du monde réel deviennent indistinguables pour le modèle interne
 
 ---
 
