@@ -36,3 +36,14 @@ incertitude = entropie (plusieurs successeurs possibles)
 confiance = probabilité empirique du meilleur successeur
 
 couverture = proportion de transitions où le modèle avait déjà appris la clé (z_t, a_t)
+
+
+## Choix du champ latent
+
+Par défaut, l'évaluateur calcule `checksum` depuis `capteurs_compact`.
+
+Pour évaluer un journal recodé (ex: `latent_id`), ajouter :
+
+```bash
+  --champ-latent latent_id
+```

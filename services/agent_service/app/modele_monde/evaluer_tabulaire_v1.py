@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from agent_service.app.modele_monde.tabulaire_v1 import ModeleMondeTabulaireV1
-from agent_service.app.modele_monde.entrainement_depuis_journal import iterer_transitions
+from agent_service.app.modele_monde.entrainement_depuis_journal import iterer_transitions, entrainer_modele_tabulaire_v1, calculer_checksum_evt
 
 
 Transition = Tuple[dict, dict, int, int, str]
@@ -31,6 +31,7 @@ def _evaluer_sur_transitions(
     transitions: List[Transition],
     apprendre: bool,
     out_jsonl: Optional[Path],
+    champ_latent: str,
 ) -> dict:
     total = 0
     couverts = 0
@@ -48,15 +49,15 @@ def _evaluer_sur_transitions(
         f = open(out_jsonl, "w", encoding="utf-8")
 
     try:
-        for _prev_evt, evt, chk_prev, chk, action in transitions:
+        for prev_evt, evt, etat_prev, etat, action in transitions:
             total += 1
-            pred = modele.predire(chk_prev, action)
+            pred = modele.predire(etat_prev, action)
             had = pred.support > 0
 
             ok: Optional[int]
             if had:
                 couverts += 1
-                ok = 1 if pred.etat_suivant == chk else 0
+                ok = 1 if pred.etat_suivant == etat else 0
                 corrects_couverts += ok
                 confs.append(pred.confiance)
                 ents.append(pred.entropie)
@@ -71,23 +72,32 @@ def _evaluer_sur_transitions(
                 d["corrects"] += int(ok)
 
             if f is not None:
+                # Trace agnostique
                 ligne = {
                     "run_id": str(evt.get("run_id")),
                     "episode_id": int(evt.get("episode_id")),
                     "tick": int(evt.get("tick")),
                     "action": action,
-                    "checksum_t": int(chk_prev),
-                    "checksum_t1": int(chk),
-                    "pred_checksum_t1": pred.etat_suivant,
+                    "champ_latent": str(champ_latent),
+                    "etat_t": int(etat_prev),
+                    "etat_t1": int(etat),
+                    "pred_etat_t1": pred.etat_suivant,
                     "support": int(pred.support),
                     "confiance": float(pred.confiance),
                     "entropie": float(pred.entropie),
                     "ok": ok,
                 }
+
+                # Si on évalue sur un latent discret (ex: latent_id), on ajoute
+                # en plus les checksums "physiques" pour comparaison directe.
+                if champ_latent != "checksum":
+                    ligne["checksum_t"] = int(calculer_checksum_evt(prev_evt))
+                    ligne["checksum_t1"] = int(calculer_checksum_evt(evt))
+
                 f.write(json.dumps(ligne, ensure_ascii=False) + "\n")
 
             if apprendre:
-                modele.apprendre_transition(chk_prev, action, chk)
+                modele.apprendre_transition(etat_prev, action, etat)
     finally:
         if f is not None:
             f.flush()
@@ -117,11 +127,11 @@ def _evaluer_sur_transitions(
     }
 
 
-def evaluer_en_ligne(journal_path: Path, out_jsonl: Optional[Path] = None) -> dict:
+def evaluer_en_ligne(journal_path: Path, champ_latent: str = "checksum", out_jsonl: Optional[Path] = None) -> dict:
     """Évaluation online: prédire puis apprendre au fil du journal."""
     modele = ModeleMondeTabulaireV1()
-    transitions = list(iterer_transitions(journal_path))
-    bloc = _evaluer_sur_transitions(modele, transitions, apprendre=True, out_jsonl=out_jsonl)
+    transitions = list(iterer_transitions(journal_path, champ_latent=champ_latent))
+    bloc = _evaluer_sur_transitions(modele, transitions, apprendre=True, out_jsonl=out_jsonl, champ_latent=champ_latent)
 
     return {
         "mode": "online",
@@ -135,6 +145,7 @@ def evaluer_en_ligne(journal_path: Path, out_jsonl: Optional[Path] = None) -> di
 def evaluer_split_train_test(
     journal_path: Path,
     ratio_train: float = 0.7,
+    champ_latent: str = "checksum",
     apprendre_pendant_test: bool = False,
     out_jsonl: Optional[Path] = None,
 ) -> dict:
@@ -144,20 +155,21 @@ def evaluer_split_train_test(
     - on évalue sur le reste
     Par défaut, on n'apprend PAS pendant le test (mesure de généralisation).
     """
-    transitions = list(iterer_transitions(journal_path))
+    transitions = list(iterer_transitions(journal_path, champ_latent=champ_latent))
     n = len(transitions)
     n_train = int(max(0, min(n, round(n * ratio_train))))
 
     modele = ModeleMondeTabulaireV1()
     # apprentissage
-    for _prev_evt, _evt, chk_prev, chk, action in transitions[:n_train]:
-        modele.apprendre_transition(chk_prev, action, chk)
+    for _prev_evt, _evt, etat_prev, etat, action in transitions[:n_train]:
+        modele.apprendre_transition(etat_prev, action, etat)
 
     bloc_test = _evaluer_sur_transitions(
         modele,
         transitions[n_train:],
         apprendre=apprendre_pendant_test,
         out_jsonl=out_jsonl,
+        champ_latent=champ_latent,
     )
 
     return {
@@ -178,6 +190,7 @@ def main() -> None:
     ap.add_argument("--journal", type=str, default="artefacts/episodes.jsonl")
     ap.add_argument("--mode", choices=["online", "split"], default="split")
     ap.add_argument("--ratio-train", type=float, default=0.7)
+    ap.add_argument("--champ-latent", type=str, default="checksum", help="Définition de l\'état latent: \"checksum\" calcule depuis capteurs_compact; sinon lit ce champ entier dans le journal (ex: latent_id).")
     ap.add_argument("--apprendre-pendant-test", action="store_true")
     ap.add_argument("--out", type=str, default="artefacts/modele_monde_eval_tabulaire_v1.jsonl")
     ap.add_argument("--sans-out", action="store_true", help="ne pas écrire de jsonl de détails")
@@ -187,11 +200,12 @@ def main() -> None:
     out = None if args.sans_out else Path(args.out)
 
     if args.mode == "online":
-        rapport = evaluer_en_ligne(journal_path, out_jsonl=out)
+        rapport = evaluer_en_ligne(journal_path, champ_latent=args.champ_latent, out_jsonl=out)
     else:
         rapport = evaluer_split_train_test(
             journal_path,
             ratio_train=args.ratio_train,
+            champ_latent=args.champ_latent,
             apprendre_pendant_test=args.apprendre_pendant_test,
             out_jsonl=out,
         )

@@ -27,21 +27,61 @@ def _checksum_evt(evt: dict) -> int:
     return _checksum_rapide(capteurs)
 
 
-def iterer_transitions(journal_path: Path) -> Iterator[Tuple[dict, dict, int, int, str]]:
-    """Itère des transitions (prev_evt, evt, chk_prev, chk, action).
+def calculer_checksum_evt(evt: dict) -> int:
+    """API publique: checksum rapide d'un événement à partir de capteurs_compact.
 
-    Convention (confirmée par ton extrait) :
+    Utile pour l'évaluation lorsque champ_latent != "checksum" et qu'on veut
+    tracer checksum vs latent_id dans le même jsonl.
+    """
+    return _checksum_evt(evt)
+
+
+def _etat_evt(evt: dict, champ_latent: str) -> int:
+    """Retourne l'identifiant d'état latent pour un événement.
+
+    - champ_latent == "checksum": calcule un checksum rapide depuis capteurs_compact
+    - sinon: lit evt[champ_latent] et le convertit en int (ex: latent_id)
+    """
+    if champ_latent == "checksum":
+        return _checksum_evt(evt)
+
+    if champ_latent not in evt:
+        raise KeyError(f'Champ latent absent dans l\'événement: {champ_latent}')
+    return int(evt[champ_latent])
+
+
+
+def iterer_transitions(
+    journal_path: Path,
+    champ_latent: str = "checksum",
+) -> Iterator[Tuple[dict, dict, int, int, str]]:
+    """Itère des transitions (prev_evt, evt, etat_prev, etat, action).
+
+    Convention :
       - tick 0: action null, observation initiale
       - tick t>=1: action est l'action appliquée pour passer de (t-1) à t
     => transition: (etat[t-1], action[t]) -> etat[t]
+
+    champ_latent:
+      - "checksum" : calcule l'état depuis capteurs_compact
+      - autre      : lit evt[champ_latent] (ex: "latent_id") en int
     """
     prev_evt: Optional[dict] = None
-    prev_chk: Optional[int] = None
+    prev_etat: Optional[int] = None
 
     for evt in _lire_jsonl(journal_path):
+        # on doit pouvoir obtenir un état latent
+        try:
+            etat_evt = _etat_evt(evt, champ_latent)
+        except Exception:
+            # événement inutilisable pour l'entraînement/évaluation
+            prev_evt = None
+            prev_etat = None
+            continue
+
         if prev_evt is None:
             prev_evt = evt
-            prev_chk = _checksum_evt(evt)
+            prev_etat = etat_evt
             continue
 
         # continuité stricte: même run + episode, ticks consécutifs
@@ -51,29 +91,28 @@ def iterer_transitions(journal_path: Path) -> Iterator[Tuple[dict, dict, int, in
             or int(evt.get("tick")) != int(prev_evt.get("tick")) + 1
         ):
             prev_evt = evt
-            prev_chk = _checksum_evt(evt)
+            prev_etat = etat_evt
             continue
 
         action = evt.get("action")
         if action is None:
             # on ne peut pas apprendre sans action
             prev_evt = evt
-            prev_chk = _checksum_evt(evt)
+            prev_etat = etat_evt
             continue
 
-        chk = _checksum_evt(evt)
-        yield prev_evt, evt, int(prev_chk), int(chk), str(action)
+        yield prev_evt, evt, int(prev_etat), int(etat_evt), str(action)
 
         prev_evt = evt
-        prev_chk = chk
+        prev_etat = etat_evt
 
 
-def entrainer_modele_tabulaire_v1(journal_path: Path) -> tuple[ModeleMondeTabulaireV1, dict]:
+def entrainer_modele_tabulaire_v1(journal_path: Path, champ_latent: str = "checksum") -> tuple[ModeleMondeTabulaireV1, dict]:
     modele = ModeleMondeTabulaireV1()
     nb = 0
     par_action: Dict[str, int] = {}
 
-    for _prev, _evt, chk_prev, chk, action in iterer_transitions(journal_path):
+    for _prev, _evt, chk_prev, chk, action in iterer_transitions(journal_path, champ_latent=champ_latent):
         modele.apprendre_transition(chk_prev, action, chk)
         nb += 1
         par_action[action] = par_action.get(action, 0) + 1
