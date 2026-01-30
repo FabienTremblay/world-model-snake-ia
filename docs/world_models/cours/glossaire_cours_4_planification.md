@@ -16,6 +16,8 @@ Il vise à éviter toute confusion entre les notions issues de l’apprentissage
 
 Un futur catastrophique peut parfaitement être un *positif contrastif* s’il est le futur réel observé.
 
+> ⚠️ **Attention terminologique (Cours 4)** : ces termes ne doivent jamais être confondus avec *favorable / défavorable* ou *bonne / mauvaise expérience*, qui relèvent de l’évaluation par un observateur.
+
 ---
 
 ## 2. Connu / inconnu
@@ -28,6 +30,8 @@ Un futur catastrophique peut parfaitement être un *positif contrastif* s’il e
 L’inconnu n’est **pas** une erreur du modèle :
 - il révèle une **absence d’information**,
 - il signale une **zone non explorée** du monde.
+
+> L’inconnu n’a **aucune valence intrinsèque** : il peut devenir favorable, défavorable ou porteur d’espoir selon l’expérience ultérieure.
 
 ---
 
@@ -59,6 +63,8 @@ Dans ce projet, l’incertitude émerge de manière **non probabiliste explicite
 L’incertitude n’est pas un défaut :
 > elle est une propriété structurelle du monde appris.
 
+> Elle constitue la **matière première** de la planification et de l’imagination.
+
 ---
 
 ## 5. Risque
@@ -68,11 +74,13 @@ L’incertitude n’est pas un défaut :
 Exemples :
 - probabilité de terminaison non nulle,
 - pénalité de fin,
-- perte certaine de score.
+- perte certaine de score ou de survie.
 
 Un futur peut être :
 - **connu et risqué**,
 - **inconnu mais potentiellement favorable**.
+
+> Le risque n’existe que relativement à un **observateur** et à ce qu’il considère comme une mauvaise conséquence.
 
 ---
 
@@ -91,14 +99,14 @@ Un agent rationnel peut préférer :
 
 ## 7. Curiosité
 
-**Définition** : paramètre de tempérament qui module l’attirance de l’agent pour l’inconnu.
+**Définition** : paramètre de tempérament qui module l’attirance de l’agent pour l’inconnu ou pour des signaux encore mal expliqués.
 
 La curiosité influence :
 - la pondération de l’inconnu,
 - l’acceptation du risque,
-- la tolérance à l’absence d’information.
+- la propension à déclencher des **enquêtes** ou **expéditions**.
 
-Elle ne crée pas l’exploration, mais **oriente l’arbitrage** entre sécurité et découverte.
+Elle ne crée pas l’exploration par hasard, mais **oriente l’attention vers des signaux jugés intéressants**.
 
 ---
 
@@ -134,12 +142,48 @@ Cette règle fonde l’arbitrage entre exploitation, prudence et exploration.
 | Élément | Rôle |
 |------|------|
 | Monde interne | Décrit ce qui peut arriver |
-| Incertitude | Indique ce qui est mal connu |
+| Signaux de transition | Changements émis par l’environnement |
+| Observateur | Sélectionne et interprète les signaux |
+| Connaissance | Régularités découvertes par expérience |
+| Ontologie | Concepts et relations stabilisés |
 | Planification | Évalue ce qui est souhaitable |
 | Tempérament | Oriente les choix sous incertitude |
 
 ---
 
+## 11. Signal de transition
+
+**Définition** : modification émise par l’environnement lors d’une transition, avant toute interprétation.
+
+Exemples :
+- variation de longueur,
+- variation de score,
+- apparition ou disparition d’un objet,
+- terminaison de l’épisode.
+
+Le signal est **amoral et non sémantique** : il n’est ni bon ni mauvais.
+
+---
+
+## 12. Observateur
+
+**Définition** : entité (conceptuelle ou logicielle) qui :
+- détecte certains signaux,
+- les considère comme dignes d’attention,
+- cherche à en comprendre les effets par l’expérience ou l’échange.
+
+Différents observateurs peuvent coexister et produire des évaluations divergentes d’une même trajectoire.
+
+---
+
+## 13. Enquête / expédition
+
+- **Enquête** : processus par lequel un observateur cherche à établir une relation causale à partir de signaux répétés.
+- **Expédition** : comportement dirigé visant à provoquer ou reproduire des signaux afin de réduire l’incertitude.
+
+Ces notions introduisent une **curiosité structurée**, distincte de l’exploration aléatoire.
+
+---
+
 **Note pédagogique**  
-Ce glossaire évoluera avec les expériences du Cours 4.  
-Il constitue une base conceptuelle stable, mais non figée.
+Ce glossaire reflète la vision du Cours 4 : la valeur n’est pas donnée par le monde, elle est **construite par l’expérience et l’observation**.

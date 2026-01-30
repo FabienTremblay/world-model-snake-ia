@@ -1,209 +1,242 @@
-# cours 4 — world models  
-*(modèles du monde internes)*
+# Cours 4 — World Models : prédire, imaginer, décider
 
-> Objectif pédagogique : comprendre **pourquoi** et **comment** un agent construit un modèle interne du monde,  
-> et ce qui se passe quand ce modèle est trop pauvre, trop rigide ou mal aligné avec la réalité.
+> **Objectif du cours**  
+> Comprendre ce qu’est réellement un *world model* en pratique,  
+> sans deep learning,  
+> par l’expérience, la trace, l’erreur et l’incertitude.
 
-Ce cours s’appuie sur les expérimentations réalisées avec l’arène `cours4_tiny_planification` et les journaux JSONL produits par le moteur.
-
----
-
-## 1. rappel : agent, environnement et perception
-
-Un agent n’interagit jamais directement avec le monde réel.
-
-Il interagit avec :
-- des **observations** (capteurs),
-- un **état interne**,
-- une **fonction de décision** qui choisit une action.
-
-Entre le monde et l’action, il existe donc toujours une médiation :  
-👉 **le modèle interne du monde**.
+Ce cours s’appuie sur l’environnement **Snake**, instrumenté pour permettre
+l’apprentissage, l’évaluation et l’exploitation d’un **modèle du monde interne**.
 
 ---
 
-## 2. qu’est-ce qu’un world model ?
+## 1. Rappel conceptuel
 
-Un *world model* est une représentation interne qui permet à l’agent de répondre à des questions implicites comme :
+Un *world model* n’est pas :
+- un moteur de jeu,
+- une reproduction exacte du monde réel,
+- un oracle omniscient.
 
-- « si je fais cette action, que va-t-il probablement se passer ? »
-- « quelles situations sont dangereuses ? »
-- « quelles trajectoires sont plausibles ? »
+Un *world model* est :
+> un **modèle interne appris** qui permet de **prédire des conséquences**
+> sans interroger directement le monde réel.
 
-Ce modèle peut être :
-- **explicite** (symbolique, tabulaire, règles),
-- **implicite** (poids neuronaux, états latents),
-- ou **hybride**.
-
-Dans notre moteur Snake :
-- le monde réel est la grille,
-- le monde perçu est un tenseur de capteurs,
-- le world model est ce que l’agent **infère** à partir de ces capteurs.
-
----
-
-## 3. modèle du monde ≠ carte exacte
-
-Un point fondamental :
-
-> Un world model n’est **jamais** une copie fidèle du monde.
-
-Il est :
-- partiel,
-- compressé,
-- orienté vers l’action.
-
-Un bon modèle n’est pas « vrai », il est **utile**.
+Formellement :
+```
+(observation_t) → encodage → état latent z_t
+(z_t, action_t) → modèle du monde → distribution(z_{t+1})
+```
 
 ---
 
-## 4. expérience de base : agent aléatoire
+## 2. Architecture expérimentale (ce que nous avons)
 
-Dans `cours4_tiny_planification` :
+### 2.1 Monde réel
+- Arènes YAML (`donnees/config/arenes/*.yml`)
+- Règles implicites : murs, nourriture, score, terminaison
+- Moteur déterministe
 
-- grille 7×7
-- aucun bonus
-- aucune pénalité
-- agent aléatoire
+### 2.2 Agent
+- Actions discrètes
+- Ne connaît pas les règles
+- Ne voit que des observations
 
-Résultat observé :
-- trajectoires erratiques,
-- collisions rapides,
-- aucune anticipation.
+### 2.3 Spectateur (observer)
+- Calcule descripteurs d’état
+- Écrit un journal temporel (`jsonl`)
+- Produit déjà :
+  - statistiques globales
+  - checksum d’observation
+  - erreur de prédiction
+  - détection de rupture
 
-👉 L’agent **n’a pas de world model exploitable**.  
-Il ne projette rien : chaque action est locale et instantanée.
+### 2.4 Replay
+- Permet de rejouer exactement une expérience
+- Condition nécessaire aux world models
 
----
-
-## 5. naissance d’un world model minimal
-
-Dès qu’on introduit une **régularité**, un modèle interne émerge.
-
-Exemples de régularités :
-- murs infranchissables,
-- continuité spatiale,
-- invariance de la grille,
-- pénalité ou récompense systématique.
-
-Même un agent simple finit par apprendre :
-- que certaines directions mènent souvent à une collision,
-- que certaines configurations sont récurrentes.
-
-👉 Le world model commence comme une **statistique d’expériences passées**.
+> **Axiome clé**  
+> Le monde existe indépendamment de l’agent.  
+> L’agent n’accède qu’à des signaux partiels.
 
 ---
 
-## 6. compression et effondrement du monde interne
+## 3. Le modèle du monde tabulaire (World Model v1)
 
-Considérons une représentation très pauvre :
-- peu de capteurs,
-- peu d’états distincts,
-- forte compression.
+### 3.1 Principe
 
-Conséquence :
+Nous utilisons un **modèle tabulaire empirique** :
 
-- plusieurs situations réelles différentes
-- sont perçues comme **identiques**
+```
+(z_t, action_t) → distribution(z_{t+1})
+```
 
-Le monde interne devient alors :
+Il apprend par comptage à partir d’un journal d’épisodes.
 
-- quasi déterministe,
-- pauvre en alternatives,
-- rigide.
-
-On observe un **effondrement du world model** :
-> le monde interne n’exprime plus la richesse du monde réel.
+Chaque prédiction fournit :
+- état suivant le plus probable
+- distribution complète
+- support (nombre d’observations)
+- confiance
+- entropie (incertitude)
 
 ---
 
-## 7. exemple conceptuel : histogramme global
+## 4. Entraîner un world model depuis un journal
 
-Si l’agent ne perçoit que :
-- un histogramme global des couleurs,
-- sans information spatiale,
+### 4.1 Journal requis
+Un fichier `episodes.jsonl` contenant :
+- capteurs compactés
+- actions
+- états successifs
+- (optionnel) champ latent déjà calculé
 
-alors :
-- des positions très différentes deviennent équivalentes,
-- l’avenir semble prévisible à tort,
-- les actions perdent leur sens.
+### 4.2 Commande d’évaluation (latent = checksum)
 
-👉 Ce n’est pas le monde qui est déterministe,  
-👉 c’est **la représentation qui l’impose**.
+```bash
+PYTHONPATH=services python -m agent_service.app.modele_monde.evaluer_tabulaire_v1   --journal artefacts/episodes.jsonl   --champ-latent checksum   --split 0.8   --sortie artefacts/eval_checksum.jsonl
+```
 
----
+### 4.3 Interprétation attendue
 
-## 8. déterminisme artificiel
+| Indicateur | Attendu |
+|-----------|--------|
+| Couverture | Élevée |
+| Exactitude conditionnelle | Très élevée |
+| Entropie moyenne | Proche de 0 |
 
-Point clé du cours :
-
-> Une représentation trop pauvre **fabrique artificiellement un monde déterministe**.
-
-Ce déterminisme :
-- ne vient pas des règles du jeu,
-- mais des limites du modèle interne.
-
-C’est une illusion de contrôle.
+**Conclusion intermédiaire**  
+Un état latent trop fin (checksum) rend le monde interne quasi déterministe.
 
 ---
 
-## 9. attention, intention et modèle interne
+## 5. Changer de représentation : faire émerger l’incertitude
 
-Le world model n’est pas neutre :
-- il oriente l’attention,
-- il filtre ce qui compte,
-- il rend certaines intentions possibles… et d’autres invisibles.
+### 5.1 Principe
+Un world model devient intéressant **quand l’incertitude apparaît**.
 
-Un agent ne choisit pas seulement une action,
-il choisit **dans le monde qu’il croit habiter**.
+Pour cela, on compresse l’observation :
+- soit par un encodage discret simple,
+- soit par un encodage appris (cours 3).
 
----
+### 5.2 Journal recodé avec `latent_id`
 
-## 10. lien avec la planification
+Le journal contient désormais :
+```
+evt["latent_id"]
+```
 
-Planifier, c’est :
-- simuler des futurs possibles,
-- comparer des trajectoires,
-- anticiper des conséquences.
+### 5.3 Évaluation sur latent appris
 
-Sans world model :
-- pas de projection,
-- pas de planification,
-- seulement de la réaction.
+```bash
+PYTHONPATH=services python -m agent_service.app.modele_monde.evaluer_tabulaire_v1   --journal artefacts/episodes_latent_appris.jsonl   --champ-latent latent_id   --split 0.8   --sortie artefacts/eval_latent_id.jsonl
+```
 
-La planification est donc un **usage avancé du world model**.
+### 5.4 Résultat attendu
 
----
+| Indicateur | Évolution |
+|-----------|-----------|
+| Couverture | Toujours élevée |
+| Exactitude conditionnelle | Diminue |
+| Entropie | Augmente |
 
-## 11. limites et dangers
-
-Un world model peut être :
-- trop simple → rigidité
-- trop complexe → bruit, instabilité
-- mal calibré → illusions, comportements absurdes
-
-L’enjeu n’est pas d’avoir **le meilleur modèle**,
-mais **le bon niveau de détail** pour la tâche.
+> **Message clé**  
+> L’incertitude n’est pas une erreur :  
+> elle émerge quand on regroupe des états.
 
 ---
 
-## 12. ce qu’il faut retenir
+## 6. Boucle imaginaire : simuler sans le monde réel
 
-- un agent n’agit jamais dans le monde réel, mais dans un monde **interne**
-- ce monde est une construction
-- sa qualité dépend de la représentation
-- une mauvaise représentation peut rendre le monde artificiellement déterministe
-- la planification repose sur la richesse du world model
+### 6.1 Simulation interne
+
+Le simulateur interne permet :
+```
+(z_t, action_t) → z_{t+1} simulé
+```
+
+sans appeler le moteur réel.
+
+Il :
+- échantillonne dans la distribution
+- signale les transitions inconnues
+
+### 6.2 Diagnostic : prédiction non unique
+
+```bash
+PYTHONPATH=services python -m agent_service.app.modele_monde.diagnostic_pas_unique_v1   --journal artefacts/episodes_latent_appris.jsonl
+```
+
+**Interprétation**  
+Plusieurs futurs plausibles peuvent exister pour un même état latent.
 
 ---
 
-## 13. transition vers la suite
+## 7. Prédire à plusieurs pas (rollout interne)
 
-Au prochain cours, nous verrons :
-- comment enrichir progressivement un world model,
-- comment tester sa qualité,
-- et comment relier modèle du monde, récompense et politique d’action.
+Un world model n’est utile que s’il peut simuler **au-delà d’un pas**.
+
+Principe :
+1. partir d’un état latent réel `z_t`
+2. simuler k pas via le modèle interne
+3. comparer avec la trajectoire réelle
+
+Effet attendu :
+- l’erreur augmente avec l’horizon
+- l’incertitude s’accumule
 
 ---
 
-*fin du cours 4*
+## 8. Décider avec le monde interne (MPC)
+
+### 8.1 Planification par imagination
+
+Le module de planification :
+- simule plusieurs futurs
+- évalue récompense et terminaison
+- choisit l’action qui maximise l’espérance
+
+### 8.2 Message pédagogique central
+
+> Agir dans le monde imaginé  
+> est moins coûteux que d’explorer dans le monde réel.
+
+---
+
+## 9. Incertitude et exploration
+
+L’incertitude sert à :
+- détecter l’inconnu
+- éviter les actions irréversibles
+- forcer l’exploration ciblée
+
+Un agent peut :
+- **savoir qu’il ne sait pas**
+- adapter son comportement en conséquence
+
+---
+
+## 10. Ce que ce cours démontre
+
+### Ce qui est prouvé expérimentalement
+- un world model peut être appris sans deep learning
+- l’erreur prédictive est mesurable
+- l’incertitude émerge d’une représentation compressée
+- la simulation interne est exploitable pour décider
+
+### Ce que l’étudiant doit retenir
+- un world model est un objet scientifique testable
+- la représentation est plus importante que l’algorithme
+- l’incertitude est une information, pas un défaut
+
+---
+
+## 11. Transition vers la suite
+
+Ce cours ouvre naturellement vers :
+- exploration guidée par l’incertitude
+- modèles de récompense plus riches
+- apprentissage actif du monde
+
+> **Fin du Cours 4**  
+> À partir d’ici, l’agent n’est plus réactif :  
+> il commence à imaginer.

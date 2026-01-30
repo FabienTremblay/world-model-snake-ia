@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from agent_service.app.agents import AgentAleatoire, AgentCuriositeTabulaire
-from agent_service.app.agents.contrats import ContexteDecision, IAgent
+from agent_service.app.agents.contrats import ContexteDecision, ContextePerception, IAgent
 from agent_service.app.modele_monde.latent_v1 import encoder_latent, ModeLatent
 
 from runner.app.journal import JournalEpisodes
@@ -41,6 +41,16 @@ def _fabriquer_agent(args: argparse.Namespace) -> IAgent:
 
         # paramètres conservateurs par défaut (cours 4)
         return AgentPlanifMPCTabulaire(seed=args.seed, mode_latent=args.latent)
+    if nom == "planif_mpc_observateur_tabulaire":
+        from agent_service.app.agents.agent_planif_mpc_observateur_tabulaire import AgentPlanifMPCObservateurTabulaire
+        return AgentPlanifMPCObservateurTabulaire(seed=args.seed, mode_latent=args.latent)
+
+    if nom == "planif_1pas_temperament":
+        from agent_service.app.agents.agent_planif_1pas_temperament_v1 import (
+            AgentPlanif1PasTemperamentV1,
+        )
+
+        return AgentPlanif1PasTemperamentV1(seed=args.seed, mode_latent=args.latent)
     if nom == "curiosite_tabulaire":
         # epsilon = exploration aléatoire (epsilon-greedy)
         from agent_service.app.agents.agent_curiosite_tabulaire import ParametresCuriosite
@@ -52,8 +62,7 @@ def _fabriquer_agent(args: argparse.Namespace) -> IAgent:
             w_inconfiance=float(args.w_inconfiance),
         )
         return AgentCuriositeTabulaire(seed=args.seed, params=params, mode_latent=args.latent)
-    raise SystemExit(f"agent inconnu: {args.agent!r} (attendus: aleatoire, curiosite_tabulaire, planif_mpc_tabulaire)")
-
+    raise SystemExit(f"agent inconnu: {args.agent!r} (attendus: aleatoire, curiosite_tabulaire, planif_mpc_tabulaire, planif_mpc_observateur_tabulaire)")
 
 def _ecrire_metrics(
     fp,
@@ -108,7 +117,7 @@ def construire_parser() -> argparse.ArgumentParser:
         "--agent",
         type=str,
         default="aleatoire",
-        help="Agent: aleatoire | curiosite_tabulaire",
+        help="Agent: aleatoire | curiosite_tabulaire | planif_mpc_tabulaire | planif_1pas_temperament",
     )
     ap.add_argument(
     "--latent",
@@ -238,6 +247,9 @@ def main(argv: list[str] | None = None) -> None:
                     tick=monde.tick,
                     largeur=cfg.largeur,
                     hauteur=cfg.hauteur,
+                    # Cours 4 : par défaut, agent "voyant" (vision 180°)
+                    # Les agents pourront surcharger ce contexte.
+                    perception=ContextePerception(),
                 )
                 action = agent.choisir_action(capteurs, ctx)
                 z_avant = encoder_latent(capteurs, args.latent)
