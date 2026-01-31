@@ -151,39 +151,124 @@ Cette règle fonde l’arbitrage entre exploitation, prudence et exploration.
 
 ---
 
-## 11. Signal de transition
+## 11. Signal
 
-**Définition** : modification émise par l’environnement lors d’une transition, avant toute interprétation.
+**Définition canonique** :
+
+> Un **signal** est un phénomène brut émis par l’environnement, indépendant de tout dispositif d’observation ou d’interprétation.
+
+- Il existe même s’il n’est pas perçu.
+- Il ne possède aucune signification intrinsèque.
+- Il est amoral et non intentionnel.
 
 Exemples :
-- variation de longueur,
-- variation de score,
-- apparition ou disparition d’un objet,
-- terminaison de l’épisode.
-
-Le signal est **amoral et non sémantique** : il n’est ni bon ni mauvais.
+- agitation thermique de l’air,
+- collision physique,
+- présence d’un objet,
+- variation réelle de l’état du monde.
 
 ---
 
-## 12. Observateur
+## 12. Donnée
 
-**Définition** : entité (conceptuelle ou logicielle) qui :
-- détecte certains signaux,
-- les considère comme dignes d’attention,
-- cherche à en comprendre les effets par l’expérience ou l’échange.
+**Définition canonique** :
 
-Différents observateurs peuvent coexister et produire des évaluations divergentes d’une même trajectoire.
+> Une **donnée** est un signal transformé par un instrument de mesure ou de perception.
 
----
+- La donnée dépend du dispositif (capteur, encodeur, organe perceptif).
+- Elle est déjà une transformation du réel.
+- Elle peut être numérique, symbolique ou structurée.
 
-## 13. Enquête / expédition
-
-- **Enquête** : processus par lequel un observateur cherche à établir une relation causale à partir de signaux répétés.
-- **Expédition** : comportement dirigé visant à provoquer ou reproduire des signaux afin de réduire l’incertitude.
-
-Ces notions introduisent une **curiosité structurée**, distincte de l’exploration aléatoire.
+Exemple :
+- signal : chaleur
+- instrument : thermomètre Fahrenheit
+- donnée : `32`
 
 ---
 
-**Note pédagogique**  
-Ce glossaire reflète la vision du Cours 4 : la valeur n’est pas donnée par le monde, elle est **construite par l’expérience et l’observation**.
+## 13. Information
+
+**Définition canonique** :
+
+> Une **information** est une donnée interprétée dans un cadre explicite (unité, contexte, référence).
+
+- Elle décrit un état ou une relation.
+- Elle est communicable.
+- Elle réduit une incertitude locale.
+
+Exemple :
+> *Il fait 32 degrés Fahrenheit.*
+
+---
+
+## 14. Connaissance
+
+**Définition canonique** :
+
+> Une **connaissance** est une structure interprétative qui relie des informations à des effets, des contraintes ou des possibilités anticipables.
+
+- Elle accepte des informations en entrée.
+- Elle applique des règles, formules ou régularités.
+- Elle produit des conséquences interprétables : anticipation, utilité, alerte, transformation d’information.
+
+Exemple :
+> *Entre 32°F et 212°F, l’eau reste liquide.*
+
+La connaissance n’est ni universelle ni définitive :
+- elle est située,
+- révisable,
+- dépendante de l’expérience.
+
+---
+
+## 15. Ontologie
+
+**Définition canonique** :
+
+> Une **ontologie** est un corpus structuré de connaissances définissant un domaine de pertinence, ses catégories, et ses règles de transformation ou de causalité.
+
+- Elle ne décrit pas le monde tel qu’il est.
+- Elle définit ce qui compte, ce qui est comparable et ce qui est causalement lié.
+- Elle permet le partage et la transmission des connaissances.
+
+Exemples de domaines ontologiques :
+- conservation des aliments,
+- physique des phases de l’eau,
+- jeu du serpent.
+
+---
+
+## 16. Instrument
+
+**Définition canonique** :
+
+> Un **instrument** est un dispositif qui transforme un signal en donnée.
+
+- Il peut être physique (capteur, organe sensoriel).
+- Ou computationnel (encodeur, projection, observateur).
+
+L’instrument conditionne :
+- ce qui peut être perçu,
+- la forme des données,
+- les limites de la connaissance possible.
+
+---
+
+## 17. Observateur
+
+**Définition canonique** :
+
+> Un **observateur** est une entité qui sélectionne certaines données, les transforme en informations, et mobilise des connaissances issues d’une ontologie pour anticiper des effets.
+
+Différents observateurs peuvent :
+- percevoir différemment les mêmes signaux,
+- produire des informations divergentes,
+- mobiliser des ontologies distinctes.
+
+---
+
+**Note pédagogique (Cours 4)**  
+La valeur n’est pas donnée par le monde.  
+Elle est construite par l’enchaînement :  
+**signal → donnée → information → connaissance → ontologie**.
+
