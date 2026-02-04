@@ -22,11 +22,15 @@ import json
 from pathlib import Path
 from typing import Dict, Tuple, Optional, Any
 
+from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
+
 
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
     p.add_argument("--journal", required=True, help="Path vers episodes.jsonl")
-    p.add_argument("--out", required=True, help="Sortie episodes_delta_score_pos.jsonl")
+    p.add_argument("--out", required=False, help="Sortie episodes_delta_score_pos.jsonl (optionnel si --experience)")
+    p.add_argument("--experience", required=False, help="Id d'expérience (pour résoudre les chemins + défauts de sortie)")
+     p.add_argument(
     p.add_argument(
         "--champ",
         default="delta_score_pos",
@@ -43,8 +47,28 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _parser().parse_args()
+    racine = Path(__file__).resolve().parents[4]
+
+    bac = None
+    if args.experience:
+        bac = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
+        bac.assurer_structure()
+
+    # entrée
     journal_path = Path(args.journal)
-    out_path = Path(args.out)
+    if bac is not None and not journal_path.is_absolute():
+        journal_path = bac.resoudre_chemin(journal_path)
+
+    # sortie
+    if args.out:
+        out_path = Path(args.out)
+        if bac is not None and not out_path.is_absolute():
+            out_path = bac.resoudre_chemin(out_path)
+    else:
+        if bac is None:
+            raise SystemExit("Il faut fournir --out, ou bien fournir --experience pour calculer une sortie par défaut.")
+        out_path = bac.paths.datasets_dir / f"{journal_path.stem}_delta_score_pos.jsonl"
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     nb_in = 0

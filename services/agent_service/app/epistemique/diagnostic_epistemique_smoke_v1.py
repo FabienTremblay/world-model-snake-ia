@@ -18,6 +18,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
+
 from .contrats import EvaluationHypotheseV1, HypotheseEpistemiqueV1
 from .registre_epistemique_v1 import RegistreEpistemiqueV1
 
@@ -59,9 +61,28 @@ def _evaluer_hypothese_ratio(
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--journal", required=True, type=Path)
+    p.add_argument("--experience", required=False, help="Id d'expérience (pour résoudre chemins + sortie défaut)")
+    p.add_argument("--out", required=False, help="Fichier JSON de sortie (optionnel; défaut: artefacts/diagnostics)")
     args = p.parse_args()
 
+    racine = Path(__file__).resolve().parents[4]
+    bac = None
+    if args.experience:
+        bac = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
+        bac.assurer_structure()
+
     journal = args.journal
+    if bac is not None and not journal.is_absolute():
+        journal = bac.resoudre_chemin(journal)
+
+    out_path = None
+    if args.out:
+        out_path = Path(args.out)
+        if bac is not None and not out_path.is_absolute():
+            out_path = bac.resoudre_chemin(out_path)
+    elif bac is not None:
+        out_path = bac.paths.diagnostics_dir / f"{Path(__file__).stem}__{journal.stem}.json"
+ 
 
     # registre + hypothèses "nommées" dans la langue de l'APK
     reg = RegistreEpistemiqueV1()
@@ -170,7 +191,11 @@ def main() -> None:
         },
         "note": "smoke v1: hypothèses naïves, destinées à évoluer",
     }
-    print(json.dumps(out, ensure_ascii=False, indent=2))
+    texte = json.dumps(out, ensure_ascii=False, indent=2)
+    print(texte)
+    if out_path is not None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(texte + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

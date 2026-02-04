@@ -20,6 +20,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
+
 from runner.app.replay import decoder_capteurs_b64
 
 from agent_service.app.modele_monde.latent_v1 import encoder_latent, extraire_signaux_percus_voisinage_v1
@@ -28,7 +30,8 @@ from agent_service.app.modele_monde.latent_v1 import encoder_latent, extraire_si
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
     p.add_argument("--journal", required=True, help="Path vers episodes.jsonl")
-    p.add_argument("--out", required=True, help="Sortie episodes_signaux_hash.jsonl")
+    p.add_argument("--out", required=False, help="Sortie episodes_signaux_hash.jsonl (optionnel si --experience)")
+    p.add_argument("--experience", required=False, help="Id d'expérience (pour résoudre les chemins + défauts de sortie)")
     p.add_argument(
         "--champ",
         default="signaux_hash",
@@ -47,8 +50,31 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _parser().parse_args()
+    racine = Path(__file__).resolve().parents[4]
+
+    bac = None
+    if args.experience:
+        bac = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
+        bac.assurer_structure()
+
     journal_path = Path(args.journal)
-    out_path = Path(args.out)
+    if bac is not None and not journal_path.is_absolute():
+        journal_path = bac.resoudre_chemin(journal_path)
+
+    if args.out:
+        out_path = Path(args.out)
+        if bac is not None and not out_path.is_absolute():
+            out_path = bac.resoudre_chemin(out_path)
+    else:
+        if bac is None:
+            raise SystemExit("Il faut fournir --out, ou bien fournir --experience pour calculer une sortie par défaut.")
+        stem = journal_path.stem
+        if stem.endswith("_signauxhash"):
+            nom = f"{stem}.jsonl"
+        else:
+            nom = f"{stem}_signauxhash.jsonl"
+        out_path = bac.paths.datasets_dir / nom
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     nb_in = 0

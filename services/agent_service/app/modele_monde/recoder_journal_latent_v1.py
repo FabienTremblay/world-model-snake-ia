@@ -17,6 +17,8 @@ import json
 from pathlib import Path
 from typing import List, Optional
 
+from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
+
 import numpy as np
 
 from agent_service.app.modele_monde.encodeur_contrastif_v1 import (
@@ -30,8 +32,9 @@ def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
     p.add_argument("--episodes", required=True, help="Path vers episodes.jsonl")
     p.add_argument("--encodeur", required=True, help="Path vers encodeur_contrastif_v1.npz")
-    p.add_argument("--out", required=True, help="Sortie episodes_latent_appris.jsonl")
-
+    p.add_argument("--out", required=False, help="Sortie episodes_latent_appris.jsonl (optionnel si --experience)")
+    p.add_argument("--experience", required=False, help="Id d'expérience (pour résoudre les chemins + défauts de sortie)")
+ 
     # defaults figés (doc)
     p.add_argument("--k", type=int, default=512)
 
@@ -44,11 +47,33 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = _parser().parse_args()
+    racine = Path(__file__).resolve().parents[4]
+
+    bac = None
+    if args.experience:
+        bac = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
+        bac.assurer_structure()
+
     episodes_path = Path(args.episodes)
-    out_path = Path(args.out)
+    encodeur_path = Path(args.encodeur)
+    if bac is not None:
+        if not episodes_path.is_absolute():
+            episodes_path = bac.resoudre_chemin(episodes_path)
+        if not encodeur_path.is_absolute():
+            encodeur_path = bac.resoudre_chemin(encodeur_path)
+
+    if args.out:
+        out_path = Path(args.out)
+        if bac is not None and not out_path.is_absolute():
+            out_path = bac.resoudre_chemin(out_path)
+    else:
+        if bac is None:
+            raise SystemExit("Il faut fournir --out, ou bien fournir --experience pour calculer une sortie par défaut.")
+        out_path = bac.paths.datasets_dir / f"{episodes_path.stem}_latent_appris.jsonl"
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    enc = EncodeurContrastifV1.charger_npz(str(Path(args.encodeur)))
+    enc = EncodeurContrastifV1.charger_npz(str(encodeur_path))
 
     # 1) lire + encoder en mémoire (N,d)
     evts: List[dict] = []

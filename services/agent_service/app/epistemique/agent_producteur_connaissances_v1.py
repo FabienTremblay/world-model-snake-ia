@@ -18,6 +18,8 @@ import json
 from collections import Counter
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+ 
+from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
 
 from agent_service.app.signaux.signaux_monde_v1 import extraire_signaux_monde_v1
 
@@ -248,20 +250,45 @@ def main() -> None:
     ap.add_argument("--journal", required=True, help="Chemin vers un journal .jsonl (ticks)")
     ap.add_argument("--in-registre", default=None, help="Chemin vers un registre JSON existant (optionnel)")
     ap.add_argument("--out-registre", default=None, help="Chemin où sauvegarder le registre JSON (optionnel)")
+    ap.add_argument("--experience", required=False, help="Id d'expérience (pour résoudre chemins + défauts de sortie)")
     args = ap.parse_args()
 
-    registre_initial = None
-    if args.in_registre:
-        registre_initial = RegistreEpistemiqueV1.charger_json(Path(args.in_registre))
+    racine = Path(__file__).resolve().parents[4]
+    bac = None
+    if args.experience:
+        bac = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
+        bac.assurer_structure()
 
+    journal_path = Path(args.journal)
+    if bac is not None and not journal_path.is_absolute():
+        journal_path = bac.resoudre_chemin(journal_path)
+
+    in_registre_path = None
+    if args.in_registre:
+        in_registre_path = Path(args.in_registre)
+        if bac is not None and not in_registre_path.is_absolute():
+            in_registre_path = bac.resoudre_chemin(in_registre_path)
+
+    out_registre_path = None
+    if args.out_registre:
+        out_registre_path = Path(args.out_registre)
+        if bac is not None and not out_registre_path.is_absolute():
+            out_registre_path = bac.resoudre_chemin(out_registre_path)
+    elif bac is not None:
+        out_registre_path = bac.paths.registres_dir / f"{Path(__file__).stem}__{journal_path.stem}.json"
+
+    registre_initial = None
+    if in_registre_path:
+        registre_initial = RegistreEpistemiqueV1.charger_json(in_registre_path)
     reg, out = produire_registre_depuis_journal_v1(
-        Path(args.journal),
+        journal_path,
         registre_initial=registre_initial,
     )
 
-    if args.out_registre:
-        reg.sauvegarder_json(Path(args.out_registre))
-        out["registre_out"] = str(args.out_registre)
+    if out_registre_path:
+        out_registre_path.parent.mkdir(parents=True, exist_ok=True)
+        reg.sauvegarder_json(out_registre_path)
+        out["registre_out"] = str(out_registre_path)
         out["registre_out_resume"] = reg.resumer()
 
     print(json.dumps(out, ensure_ascii=False, indent=2))

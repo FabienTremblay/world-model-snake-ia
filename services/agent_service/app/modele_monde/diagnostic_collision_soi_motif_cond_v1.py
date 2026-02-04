@@ -17,8 +17,10 @@ import argparse
 import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
 
 ACTIONS = ("haut", "bas", "gauche", "droite")
 
@@ -99,9 +101,29 @@ def main() -> int:
     ap.add_argument("--journal", required=True)
     ap.add_argument("--motif-candidat", type=int, default=2)
     ap.add_argument("--champ-croissance", default="delta_score_pos")
+    ap.add_argument("--experience", required=False, help="Id d'expérience (pour résoudre les chemins + sortie défaut)")
+    ap.add_argument("--out", required=False, help="Fichier JSON de sortie (optionnel; défaut: artefacts/diagnostics)")
     args = ap.parse_args()
 
-    evts = lire_evenements(args.journal)
+    racine = Path(__file__).resolve().parents[4]
+    bac = None
+    if args.experience:
+        bac = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
+        bac.assurer_structure()
+
+    journal_path = Path(args.journal)
+    if bac is not None and not journal_path.is_absolute():
+        journal_path = bac.resoudre_chemin(journal_path)
+
+    out_path = None
+    if args.out:
+        out_path = Path(args.out)
+        if bac is not None and not out_path.is_absolute():
+            out_path = bac.resoudre_chemin(out_path)
+    elif bac is not None:
+        out_path = bac.paths.diagnostics_dir / f"{Path(__file__).stem}__{journal_path.stem}.json"
+
+    evts = lire_evenements(str(journal_path))
 
     # Grouper par run_id + episode_id, et trier par tick
     by_ep: Dict[Tuple[str, int], List[Dict[str, Any]]] = defaultdict(list)
@@ -175,7 +197,11 @@ def main() -> int:
         )
     }
 
-    print(json.dumps(out, indent=2, ensure_ascii=False))
+    texte = json.dumps(out, indent=2, ensure_ascii=False)
+    print(texte)
+    if out_path is not None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(texte + "\n", encoding="utf-8")
     return 0
 
 

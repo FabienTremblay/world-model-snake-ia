@@ -22,6 +22,8 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
+from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
+
 from runner.app.replay import decoder_capteurs_b64
 
 from agent_service.app.modele_monde.latent_v1 import extraire_signaux_percus_voisinage_v1
@@ -35,7 +37,8 @@ ACTIONS = {"haut", "bas", "gauche", "droite"}
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
     p.add_argument("--journal", required=True, help="Path vers episodes.jsonl")
-    p.add_argument("--out-registre", required=True, help="Path vers registre JSON (créé/merge)")
+    p.add_argument("--out-registre", required=False, help="Path vers registre JSON (créé/merge) (optionnel si --experience)")
+    p.add_argument("--experience", required=False, help="Id d'expérience (pour résoudre chemins + défauts de sortie)")
     p.add_argument("--etiquette", default="dangers_v1", help="Etiquette pour les artefacts")
     p.add_argument("--motif-mur", type=int, default=3, help="Motif interprété comme mur (défaut 3)")
     p.add_argument("--motif-corps", type=int, default=1, help="Motif interprété comme corps (défaut 1)")
@@ -121,8 +124,25 @@ def _evaluer_regle(episodes: dict[int, list[dict]], motif_cible: int, raison_fin
 
 def main() -> int:
     args = _parser().parse_args()
+    racine = Path(__file__).resolve().parents[4]
+    bac = None
+    if args.experience:
+        bac = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
+        bac.assurer_structure()
+
     journal = Path(args.journal)
-    out_registre = Path(args.out_registre)
+    if bac is not None and not journal.is_absolute():
+        journal = bac.resoudre_chemin(journal)
+
+    if args.out_registre:
+        out_registre = Path(args.out_registre)
+        if bac is not None and not out_registre.is_absolute():
+            out_registre = bac.resoudre_chemin(out_registre)
+    else:
+        if bac is None:
+            raise SystemExit("Il faut fournir --out-registre, ou bien fournir --experience pour calculer une sortie par défaut.")
+        out_registre = bac.paths.registres_dir / f"{Path(__file__).stem}__{journal.stem}.json"
+
     etiquette = str(args.etiquette)
 
     nb_evt, episodes = _charger_episodes(journal, args.limite)

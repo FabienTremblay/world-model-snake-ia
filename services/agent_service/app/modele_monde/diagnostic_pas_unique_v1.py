@@ -7,6 +7,7 @@ import random
 import statistics
 from pathlib import Path
 from typing import List, Tuple
+from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
 
 from agent_service.app.modele_monde.entrainement_depuis_journal import iterer_transitions
 from agent_service.app.modele_monde.simulateur_interne_v1 import (
@@ -37,6 +38,8 @@ def main() -> None:
         )
     )
     ap.add_argument("--journal", type=str, default="artefacts/episodes_latent_appris.jsonl")
+    ap.add_argument("--experience", required=False, help="Id d'expérience (pour résoudre les chemins + sortie défaut)")
+    ap.add_argument("--out", required=False, help="Fichier JSON de sortie (optionnel; défaut: artefacts/diagnostics)")
     ap.add_argument(
         "--champ-latent",
         type=str,
@@ -78,7 +81,24 @@ def main() -> None:
     )
     args = ap.parse_args()
 
+    racine = Path(__file__).resolve().parents[4]
+    bac = None
+    if args.experience:
+        bac = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
+        bac.assurer_structure()
+
     journal_path = Path(args.journal)
+    if bac is not None and not journal_path.is_absolute():
+        journal_path = bac.resoudre_chemin(journal_path)
+
+    out_path = None
+    if args.out:
+        out_path = Path(args.out)
+        if bac is not None and not out_path.is_absolute():
+            out_path = bac.resoudre_chemin(out_path)
+    elif bac is not None:
+        out_path = bac.paths.diagnostics_dir / f"{Path(__file__).stem}__{journal_path.stem}.json"
+
     transitions: List[Transition] = list(iterer_transitions(journal_path, champ_latent=args.champ_latent))
     n = len(transitions)
     n_train = int(max(0, min(n, round(n * float(args.ratio_train)))))
@@ -187,7 +207,11 @@ def main() -> None:
         ),
     }
 
-    print(json.dumps(rapport, ensure_ascii=False, indent=2))
+    texte = json.dumps(rapport, ensure_ascii=False, indent=2)
+    print(texte)
+    if out_path is not None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(texte + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

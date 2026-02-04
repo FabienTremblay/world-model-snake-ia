@@ -23,6 +23,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from runner.app.replay import decoder_capteurs_b64
+from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
 
 # On réutilise la même fonction de voisinage que le diagnostic mur.
 from agent_service.app.modele_monde.latent_v1 import extraire_signaux_percus_voisinage_v1
@@ -35,6 +36,8 @@ def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
     p.add_argument("--journal", required=True, help="Path vers episodes.jsonl")
     p.add_argument("--limite", type=int, default=None, help="Limiter le nombre d'événements")
+    p.add_argument("--experience", required=False, help="Id d'expérience (pour résoudre les chemins + sortie défaut)")
+    p.add_argument("--out", required=False, help="Fichier JSON de sortie (optionnel; défaut: artefacts/diagnostics)")
     p.add_argument(
         "--motif-corps",
         type=int,
@@ -63,7 +66,25 @@ def _motif_dans_direction(extras: dict, action: str) -> int | None:
 
 def main() -> int:
     args = _parser().parse_args()
+
+    racine = Path(__file__).resolve().parents[4]
+    bac = None
+    if args.experience:
+        bac = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
+        bac.assurer_structure()
+
     path = Path(args.journal)
+    if bac is not None and not path.is_absolute():
+        path = bac.resoudre_chemin(path)
+
+    out_path = None
+    if args.out:
+        out_path = Path(args.out)
+        if bac is not None and not out_path.is_absolute():
+            out_path = bac.resoudre_chemin(out_path)
+    elif bac is not None:
+        out_path = bac.paths.diagnostics_dir / f"{Path(__file__).stem}__{path.stem}.json"
+
     motif_corps = int(args.motif_corps)
     raison_attendue = str(args.raison_fin)
 
@@ -161,7 +182,11 @@ def main() -> int:
         "note": "motif_corps est paramétrable; motif==3 est le mur dans l'autre diagnostic.",
     }
 
-    print(json.dumps(out, ensure_ascii=False, indent=2))
+    texte = json.dumps(out, ensure_ascii=False, indent=2)
+    print(texte)
+    if out_path is not None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(texte + "\n", encoding="utf-8")
     return 0
 
 
