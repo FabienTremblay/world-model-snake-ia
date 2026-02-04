@@ -120,11 +120,14 @@ def construire_parser() -> argparse.ArgumentParser:
         help="Agent: aleatoire | curiosite_tabulaire | planif_mpc_tabulaire | planif_1pas_temperament",
     )
     ap.add_argument(
-    "--latent",
-    type=str,
-    default="checksum",
-    choices=["checksum", "discret_v1"],
-    help="État latent: checksum (cours 1) | discret_v1 (cours 2, plus invariant au bruit).",
+        "--latent",
+        type=str,
+        default="checksum",
+        choices=["checksum", "discret_v1", "signaux_percus_hash_v1"],
+        help=(
+            "État latent: checksum (cours 1) | discret_v1 (cours 2, plus invariant au bruit) | "
+            "signaux_percus_hash_v1 (cours 4, regroupement par voisinage tête)."
+        ),
     )
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument(

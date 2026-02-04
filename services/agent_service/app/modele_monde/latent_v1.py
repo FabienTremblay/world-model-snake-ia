@@ -13,7 +13,7 @@ Note:
 
 API:
 - encoder_latent(capteurs, mode) -> int
-  mode: "checksum" | "discret_v1"
+  mode: "checksum" | "discret_v1" | "signaux_percus_hash_v1"
 """
 
 from collections import Counter
@@ -24,7 +24,7 @@ from commun.contrats import Pixel
 from agent_service.app.spectateur import _checksum_rapide
 
 
-ModeLatent = Literal["checksum", "discret_v1"]
+ModeLatent = Literal["checksum", "discret_v1", "signaux_percus_hash_v1"]
 
 
 def _classe_pixel_discret_v1(px: Pixel) -> int:
@@ -94,9 +94,97 @@ def _latent_discret_v1(capteurs: list[list[Pixel]], grilles: int = 4) -> int:
     return int(acc)
 
 
+def _trouver_tete(capteurs: list[list[Pixel]]) -> tuple[int, int] | None:
+    """Retourne (x,y) de la tête si détectée (motif==5), sinon None."""
+    for y, row in enumerate(capteurs):
+        for x, px in enumerate(row):
+            if int(px.motif) == 5:
+                return x, y
+    return None
+
+
+def _motif_cellule(capteurs: list[list[Pixel]], x: int, y: int) -> int:
+    h = len(capteurs)
+    w = len(capteurs[0]) if h else 0
+    if x < 0 or y < 0 or y >= h or x >= w:
+        # hors-grille = "mur" conceptuel (utile pour généraliser au bord)
+        return 3
+    return int(capteurs[y][x].motif) & 0x7
+
+
+
+
+def extraire_signaux_percus_voisinage_v1(capteurs: list[list[Pixel]]) -> dict | None:
+    pos = _trouver_tete(capteurs)
+    if pos is None:
+        return None
+    x, y = pos
+    motif_tete = _motif_cellule(capteurs, x, y)
+    motif_haut = _motif_cellule(capteurs, x, y - 1)
+    motif_bas = _motif_cellule(capteurs, x, y + 1)
+    motif_gauche = _motif_cellule(capteurs, x - 1, y)
+    motif_droite = _motif_cellule(capteurs, x + 1, y)
+
+    signaux_tuple = f"{motif_tete},{motif_haut},{motif_bas},{motif_gauche},{motif_droite}"
+
+    return {
+        "x": x,
+        "y": y,
+        "signaux_tuple": signaux_tuple,
+        "motif_tete": motif_tete,
+        "motif_haut": motif_haut,
+        "motif_bas": motif_bas,
+        "motif_gauche": motif_gauche,
+        "motif_droite": motif_droite,
+    }
+def _latent_signaux_percus_hash_v1(capteurs: list[list[Pixel]]) -> int:
+    """Latent *exploitable* (v1): voisinage local autour de la tête.
+
+    Idée:
+      - au lieu d'encoder toute la grille (checksum), on encode seulement ce qui
+        guide une décision immédiate : ce qu'il y a autour de la tête.
+
+    Représentation:
+      - motifs dans les 4 cases adjacentes (haut, bas, gauche, droite)
+      - motif de la case tête (devrait être 5)
+      - longueur (binning grossier) pour éviter de distinguer chaque taille
+
+    Remarques:
+      - on conserve *tous* les motifs (mur/corps/tête/nourriture/...) afin de
+        laisser le WM apprendre seul la sémantique.
+      - si la tête n'est pas détectée, on retombe sur une signature minimale.
+    """
+
+    pos = _trouver_tete(capteurs)
+    if pos is None:
+        # cas pathologique: pas de tête => latent très grossier
+        return 0
+
+    x, y = pos
+    motifs = (
+        _motif_cellule(capteurs, x, y),
+        _motif_cellule(capteurs, x, y - 1),
+        _motif_cellule(capteurs, x, y + 1),
+        _motif_cellule(capteurs, x - 1, y),
+        _motif_cellule(capteurs, x + 1, y),
+    )
+
+    # hash FNV-1a 64-bit (stable, cheap)
+    fnv_offset = 1469598103934665603
+    fnv_prime = 1099511628211
+    acc = fnv_offset
+    for m in motifs:
+        acc ^= int(m) & 0xFF
+        acc = (acc * fnv_prime) & 0xFFFFFFFFFFFFFFFF
+
+    return int(acc)
+
+
 def encoder_latent(capteurs: list[list[Pixel]], mode: ModeLatent = "checksum") -> int:
     if mode == "checksum":
         return int(_checksum_rapide(capteurs))
     if mode == "discret_v1":
         return _latent_discret_v1(capteurs)
+    if mode == "signaux_percus_hash_v1":
+        return _latent_signaux_percus_hash_v1(capteurs)
     raise ValueError(f"mode latent inconnu: {mode!r}")

@@ -134,8 +134,9 @@ class AgentPlanif1PasTemperamentV1(IAgent):
             self._bonus_survie_par_pas = 0.0
 
         # apprentissage offline (tabulaire)
-        self.modele_monde, _ = entrainer_modele_tabulaire_v1(journal_path, champ_latent="checksum")
-        self.modele_r, self.modele_t, _ = entrainer_utilite_tabulaire_v1(journal_path, champ_latent="checksum")
+        champ_latent = os.environ.get("SNAKE_CHAMP_LATENT", "checksum").strip() or "checksum"
+        self.modele_monde, _ = entrainer_modele_tabulaire_v1(journal_path, champ_latent=champ_latent)
+        self.modele_r, self.modele_t, _ = entrainer_utilite_tabulaire_v1(journal_path, champ_latent=champ_latent)
 
     def _evaluer_action(self, z: int, a: str) -> float:
         pred = self.modele_monde.predire(z, a)

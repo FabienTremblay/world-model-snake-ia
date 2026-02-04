@@ -27,6 +27,7 @@ class ParametresAgentPlanifMPCObservateur:
     bonus_survie_par_pas: float = 0.01
     penalite_inconnu: float = 0.2
     penalite_fin: float = 1.0
+    proba_fin_inconnue: float = 0.5
     actions: Sequence[str] = ("haut", "bas", "gauche", "droite")
 
 
@@ -45,8 +46,13 @@ class AgentPlanifMPCObservateurTabulaire(IAgent):
         if not journal_path.exists():
             raise FileNotFoundError(f"SNAKE_MODELE_JOURNAL introuvable: {journal_path}")
 
-        self.modele_monde, _ = entrainer_modele_tabulaire_v1(journal_path, champ_latent="checksum")
-        self.modele_u, self.modele_t, _ = entrainer_utilite_observateur_tabulaire_v1(journal_path, champ_latent="checksum")
+        # IMPORTANT (Cours 4):
+        # - champ_latent="checksum" => états injectifs => faible généralisation
+        # - champ_latent="signaux_hash" (ou autre) => regroupe par signaux perçus
+        champ_latent = os.environ.get("SNAKE_CHAMP_LATENT", "checksum").strip() or "checksum"
+
+        self.modele_monde, _ = entrainer_modele_tabulaire_v1(journal_path, champ_latent=champ_latent)
+        self.modele_u, self.modele_t, _ = entrainer_utilite_observateur_tabulaire_v1(journal_path, champ_latent=champ_latent)
 
     def choisir_action(self, capteurs, ctx: ContexteDecision) -> str:
         z = int(encoder_latent(capteurs, self._mode_latent))
@@ -57,6 +63,7 @@ class AgentPlanifMPCObservateurTabulaire(IAgent):
             bonus_survie_par_pas=float(self._params.bonus_survie_par_pas),
             penalite_inconnu=float(self._params.penalite_inconnu),
             penalite_fin=float(self._params.penalite_fin),
+            proba_fin_inconnue=float(self._params.proba_fin_inconnue),
         )
         return choisir_action_mpc_observateur(
             rng=self._rng,

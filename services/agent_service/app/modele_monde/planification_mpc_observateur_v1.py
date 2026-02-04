@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from typing import List, Optional, Sequence
 import random
 
@@ -35,6 +36,10 @@ class ParametresMPCObservateur:
     penalite_inconnu: float = 0.2   # petite, car "inconnu = espoir" possible
     # prudence : une terminaison probable vaut une pénalité (en espérance)
     penalite_fin: float = 1.0
+    # Lorsque P(termine|z,a,z1) est inconnue (support=0), ne pas supposer p=0.
+    # 0.5 = prudence neutre. Monte vers 1.0 si tu veux un agent "prudent".
+    # Descend vers 0.0 si tu veux un agent "optimiste" sur l'inconnu.
+    proba_fin_inconnue: float = 0.5
     # contrainte (subjective) : on rejette les actions trop risquées à court terme
     seuil_risque_fin_1pas: float = 0.20
     risque_fin_1pas_mode: str = "esperance"  # "esperance" | "max"
@@ -53,7 +58,7 @@ def rollout_imagine(
     G = 0.0
     w = 1.0
 
-    for _ in range(int(params.horizon)):
+    for t in range(int(params.horizon)):
         a = rng.choice(list(actions))
         pred = modele_monde.predire(z, a)
         if pred.support <= 0 or not getattr(pred, "distribution", None):
@@ -69,10 +74,13 @@ def rollout_imagine(
         u = float(pu.esperance) if pu.support > 0 else 0.0
 
         pt = modele_t.predire(z, a, int(z1))
-        p_fin = float(pt.proba_termine) if pt.support > 0 else 0.0
+        p_fin = float(pt.proba_termine) if pt.support > 0 else float(params.proba_fin_inconnue)
+        if pt.support <= 0:
+            # inconnu sur la terminaison : petite prudence (sans interdire)
+            G -= float(params.penalite_inconnu) * w
 
         # jugement subjectif : survivre/continuer vaut quelque chose
-        G += (u + float(params.bonus_survie_par_pas) + float(params.cout_par_pas)) * w
+        G += (u + float(params.bonus_survie_par_pas) - float(params.cout_par_pas)) * w
         # prudence (espérance) : pénaliser le risque de fin au lieu de tirer au hasard
         G -= float(params.penalite_fin) * float(p_fin) * w
 
@@ -91,6 +99,7 @@ def _risque_fin_1pas(
     z0: int,
     a0: str,
     mode: str,
+    proba_fin_inconnue: float,
 ) -> Optional[float]:
     pred0 = modele_monde.predire(int(z0), str(a0))
     if pred0.support <= 0 or not getattr(pred0, "distribution", None):
@@ -104,7 +113,7 @@ def _risque_fin_1pas(
         rmax = 0.0
         for z1, p in dist.items():
             pt = modele_t.predire(int(z0), str(a0), int(z1))
-            p_fin = float(pt.proba_termine) if pt.support > 0 else 0.0
+            p_fin = float(pt.proba_termine) if pt.support > 0 else float(proba_fin_inconnue)
             rmax = max(rmax, float(p_fin))
         return float(rmax)
 
@@ -112,7 +121,7 @@ def _risque_fin_1pas(
     r = 0.0
     for z1, p in dist.items():
         pt = modele_t.predire(int(z0), str(a0), int(z1))
-        p_fin = float(pt.proba_termine) if pt.support > 0 else 0.0
+        p_fin = float(pt.proba_termine) if pt.support > 0 else float(proba_fin_inconnue)
         r += float(p) * float(p_fin)
     return float(r)
 
@@ -131,7 +140,14 @@ def choisir_action_mpc_observateur(
     nb_filtrees = 0
 
     for a0 in actions:
-        risque = _risque_fin_1pas(modele_monde, modele_t, int(z0), str(a0), str(params.risque_fin_1pas_mode))
+        risque = _risque_fin_1pas(
+            modele_monde,
+            modele_t,
+            int(z0),
+            str(a0),
+            str(params.risque_fin_1pas_mode),
+            float(params.proba_fin_inconnue),
+        )
         # si on ne sait pas, on ne filtre pas ici (c'est géré par penalite_inconnu)
         if risque is not None and float(risque) >= float(params.seuil_risque_fin_1pas):
             nb_filtrees += 1
@@ -148,14 +164,20 @@ def choisir_action_mpc_observateur(
                 s += -float(params.penalite_inconnu)
                 continue
 
+            # score immédiat (au tick 0)
+            G = 0.0
             pu = modele_u.predire(int(z0), str(a0), int(z1))
             u0 = float(pu.esperance) if pu.support > 0 else 0.0
+            if pu.support <= 0:
+                G -= float(params.penalite_inconnu)
 
             pt = modele_t.predire(int(z0), str(a0), int(z1))
-            p_fin0 = float(pt.proba_termine) if pt.support > 0 else 0.0
+            p_fin0 = float(pt.proba_termine) if pt.support > 0 else float(params.proba_fin_inconnue)
+            if pt.support <= 0:
+                G -= float(params.penalite_inconnu)
 
             # jugement subjectif : même au tick 0, on valorise "continuer"
-            G = u0 + float(params.bonus_survie_par_pas) + float(params.cout_par_pas)
+            G += u0 + float(params.bonus_survie_par_pas) - float(params.cout_par_pas)
             # prudence (espérance)
             G -= float(params.penalite_fin) * float(p_fin0)
             if p_fin0 < 1.0:

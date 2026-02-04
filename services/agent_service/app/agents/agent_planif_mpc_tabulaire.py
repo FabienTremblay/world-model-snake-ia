@@ -62,8 +62,9 @@ class AgentPlanifMPCTabulaire(IAgent):
 
 
         # modèles offline (tabulaires)
-        self.modele_monde, _ = entrainer_modele_tabulaire_v1(journal_path, champ_latent="checksum" if self._mode_latent == "checksum" else "checksum")
-        self.modele_r, self.modele_t, _ = entrainer_utilite_tabulaire_v1(journal_path, champ_latent="checksum" if self._mode_latent == "checksum" else "checksum")
+        champ_latent = os.environ.get("SNAKE_CHAMP_LATENT", "checksum").strip() or "checksum"
+        self.modele_monde, _ = entrainer_modele_tabulaire_v1(journal_path, champ_latent=champ_latent)
+        self.modele_r, self.modele_t, _ = entrainer_utilite_tabulaire_v1(journal_path, champ_latent=champ_latent)
 
     def choisir_action(self, capteurs, ctx: ContexteDecision) -> str:
         z = int(encoder_latent(capteurs, self._mode_latent))
