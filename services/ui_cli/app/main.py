@@ -281,6 +281,12 @@ def _resoudre_path_arene(racine: Path, arene: str) -> Path:
 
 def _fabriquer_agent(args: argparse.Namespace) -> IAgent:
     nom = args.agent.strip().lower()
+
+    if nom == "agent_personne":
+    from agent_service.app.agent_runtime.agent_incarnations.agent_personne_runtime_v1 import AgentPersonneRuntimeV1
+    # résolution du path depuis --experience (artefacts/agent_personne/<id>/agent_personne.json)
+    return AgentPersonneRuntimeV1(agent_personne_path=..., seed=args.seed, mode_latent=args.latent)
+
     if nom == "aleatoire":
         return AgentAleatoire(seed=args.seed, epsilon=float(args.epsilon))
     if nom == "planif_mpc_tabulaire":

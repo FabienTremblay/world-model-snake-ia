@@ -118,7 +118,7 @@ def cmd_editer_tete(args: argparse.Namespace) -> None:
     catalogue2 = CatalogueDeTetes(
         version=catalogue.version,
         genere_ts_ns=time.time_ns(),
-        run_id=catalogue.run_id,
+        run_id=str(time.time_ns()),
         arene_id=catalogue.arene_id,
         sources=catalogue.sources,
         tetes=sorted(tetes, key=lambda t: t.id),
@@ -235,6 +235,26 @@ def cmd_entrainer(args: argparse.Namespace) -> None:
 
     sauvegarder_agent_personne(chemins["agent_personne_final"], agent_personne)
     sauvegarder_rapport(chemins["rapport_entrainement"], rapport)
+
+    # log minimal dans runs_preparation (utile pour traçabilité)
+    fp_logs = Path(chemins["runs_preparation_dir"]) / "logs.json"
+    fp_logs.write_text(
+        json.dumps(
+            {
+                "event": "preparation_agent_terminee",
+                "ts_ns": time.time_ns(),
+                "experience": args.experience,
+                "agent_personne_id": args.agent_personne_id,
+                "plan": fp_plan,
+                "catalogue": fp_catalogue,
+                "agent_personne": chemins["agent_personne_final"],
+                "rapport": chemins["rapport_entrainement"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
 
     print(json.dumps(
         {
