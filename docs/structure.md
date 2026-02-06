@@ -43,6 +43,7 @@ Le code est structuré par **rôles fonctionnels**, pas par technologies.
 
 - `services/runner/`
   - orchestration d’épisodes
+  - **noyau d’exécution partagé** (cours 5) : logique commune d’exécution (CLI, autres UI)
   - relecture (`replay`)
   - journalisation des événements
 

@@ -17,6 +17,7 @@ from agent_service.app.agents.contrats import ContexteDecision, ContextePercepti
 from agent_service.app.modele_monde.latent_v1 import encoder_latent, ModeLatent
 
 from runner.app.journal import JournalEpisodes
+from runner.app.noyau import ParametresExecution, executer_episodes_headless
 from world_sim.app.arenes_yaml import charger_arene_v0
 from world_sim.app.monde_snake import ConfigMonde, MondeSnake
 
@@ -346,6 +347,35 @@ def _ecrire_metrics(
     fp.write(json.dumps(ligne, ensure_ascii=False) + "\n")
 
 
+
+
+def _hook_apres_action_pour_cli(metrics_fp, agent, mode_latent: str):
+    """Fabrique un hook post-action pour le CLI.
+
+    - écrit les métriques si demandé
+    - déclenche l'apprentissage en ligne si l'agent le supporte
+    """
+
+    def _hook(run_id, episode_id, monde, action, z_avant, z_apres, capteurs_avant, capteurs_apres):
+        if metrics_fp is not None:
+            _ecrire_metrics(
+                metrics_fp,
+                run_id=run_id,
+                episode_id=episode_id,
+                tick=monde.tick,
+                action=action,
+                checksum_avant=z_avant,
+                checksum_apres=z_apres,
+                agent=agent,
+            )
+
+        apprendre_transition = getattr(agent, "apprendre_transition", None)
+        if callable(apprendre_transition) and z_avant and z_apres:
+            apprendre_transition(z_avant, action, z_apres)
+
+    return _hook
+
+
 def construire_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="ui_cli",
@@ -627,93 +657,27 @@ def main(argv: list[str] | None = None) -> None:
 
             agent = _fabriquer_agent(args)
 
-            for episode_id in range(1, int(args.episodes) + 1):
-                cfg = cfg_base
-                if args.seed_episode:
-                    # compat pydantic v1/v2
-                    if hasattr(cfg_base, "model_copy"):
-                        cfg = cfg_base.model_copy(update={"seed": base_seed + episode_id})
-                    else:
-                        cfg = ConfigMonde(**{**cfg_base.__dict__, "seed": base_seed + episode_id})
+            # exécution (noyau runner commun — cours 5)
+            params_exec = ParametresExecution(
+                episodes=int(args.episodes),
+                max_ticks=int(args.max_ticks),
+                seed_episode=bool(args.seed_episode),
+            )
 
-                monde = MondeSnake(cfg)
-                capteurs, _ = monde.observer(niveau_bruit=cfg.niveau_bruit)
+            hook_apres_action = _hook_apres_action_pour_cli(metrics_fp, agent, mode_latent=str(args.latent))
 
+            executer_episodes_headless(
+                run_id=run_id,
+                cfg_base=cfg_base,
+                agent=agent,
+                journal=journal,
+                params=params_exec,
+                perception=ContextePerception(),
+                encoder_latent=encoder_latent,
+                mode_latent=str(args.latent),
+                hook_apres_action=hook_apres_action,
+            )
 
-                # tick 0 (action=null)
-                journal.ecrire_tick(
-                    run_id=run_id,
-                    episode_id=episode_id,
-                    tick=monde.tick,
-                    arene_id=cfg.arene_id,
-                    seed=cfg.seed,
-                    action_direction=None,
-                    niveau_bruit=cfg.niveau_bruit,
-                    score=monde.score,
-                    longueur=len(monde.serpent),
-                    termine=monde.termine,
-                    raison_fin=monde.raison_fin,
-                    capteurs=capteurs,
-                )
-
-                for _ in range(int(args.max_ticks)):
-                    # décision sur l'état courant (tick t)
-                    ctx = ContexteDecision(
-                        run_id=run_id,
-                        episode_id=episode_id,
-                        tick=monde.tick,
-                        largeur=cfg.largeur,
-                        hauteur=cfg.hauteur,
-                        # Cours 4 : par défaut, agent "voyant" (vision 180°)
-                        # Les agents pourront surcharger ce contexte.
-                        perception=ContextePerception(),
-                    )
-                    action = agent.choisir_action(capteurs, ctx)
-                    z_avant = encoder_latent(capteurs, args.latent)
-
-                    # appliquer l'action => tick t+1
-                    monde.step(direction=action)
-                    capteurs_apres, _ = monde.observer(niveau_bruit=cfg.niveau_bruit)
-                    z_apres = encoder_latent(capteurs_apres, args.latent)
-
-                    # journaliser tick t+1 avec action appliquée
-                    journal.ecrire_tick(
-                        run_id=run_id,
-                        episode_id=episode_id,
-                        tick=monde.tick,
-                        arene_id=cfg.arene_id,
-                        seed=cfg.seed,
-                        action_direction=action,
-                        niveau_bruit=cfg.niveau_bruit,
-                        score=monde.score,
-                        longueur=len(monde.serpent),
-                        termine=monde.termine,
-                        raison_fin=monde.raison_fin,
-                        capteurs=capteurs_apres,
-                    )
-
-
-                    if metrics_fp is not None:
-                        _ecrire_metrics(
-                            metrics_fp,
-                            run_id=run_id,
-                            episode_id=episode_id,
-                            tick=monde.tick,
-                            action=action,
-                            checksum_avant=z_avant,
-                            checksum_apres=z_apres,
-                            agent=agent,
-                        )
-
-                    # apprentissage en ligne, si l'agent le supporte
-                    apprendre_transition = getattr(agent, "apprendre_transition", None)
-                    if callable(apprendre_transition):
-                        apprendre_transition(z_avant, action, z_apres)
-
-                    capteurs = capteurs_apres
-
-                    if monde.termine:
-                        break
 
         finally:
             journal.fermer()

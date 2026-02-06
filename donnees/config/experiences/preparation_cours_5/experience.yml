@@ -1,0 +1,36 @@
+# Template d'expérience (bac à sable)
+#
+# But : regrouper configuration + artefacts par expérience, de manière reproductible.
+# Le ui_cli peut être lancé avec :
+#   PYTHONPATH=services python -m ui_cli.app.main --experience preparation_cours_5 --episodes 50
+#
+# Remarque : ce fichier est volontairement simple. Le ui_cli crée le bac à sable
+# s'il n'existe pas, mais ne dépend pas encore fortement de ce YAML.
+
+id: preparation_cours_5
+experience_id: preparation_cours_5
+intention: >
+  Préparer le cours 5.
+  Générer un corpus d'épisodes stable pour éprouver
+  l'agent épistémique v2 (indices + hypothèses).
+nom: "cours 4 — world model + MPC + observateur + APK"
+
+# Organisation des sorties sous donnees/config/experiences/<id>/artefacts/
+artefacts:
+  runs_dir: artefacts/runs
+  journal_basename: journal_episodes.jsonl
+  stdout_basename: stdout.log
+  meta_basename: meta.json
+# s'il n'existe pas encore, mais ne devine pas vos choix : vous les fixez ici.
+
+experience_id: _template
+
+# Valeurs par défaut (peuvent être surchargées en CLI)
+defauts:
+  arene: demo_v0
+  agent: aleatoire
+  latent: checksum
+  episodes: 200
+  max_ticks: 2000
+  niveau_bruit: 0
+

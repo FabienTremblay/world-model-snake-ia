@@ -13,6 +13,8 @@ from world_sim.app.monde_snake import ConfigMonde, MondeSnake
 from world_sim.app.arenes_yaml import charger_arene_v0
 from runner.app.journal import JournalEpisodes
 
+from agent_service.app.agent_runtime.agents_in_arene.contrats import ContexteDecision, ContextePerception, IAgent
+
 
 def _mesurer_bruit(capteurs_canon, capteurs):
     # métriques simples: delta teinte moyen (cercle) et delta intensité moyen
@@ -33,6 +35,75 @@ def _mesurer_bruit(capteurs_canon, capteurs):
             somme_dt += dt
             somme_di += abs(a.intensite - b.intensite)
     return f"bruit: Δteinte≈{somme_dt/n:.1f}, Δint≈{somme_di/n:.1f}"
+
+
+def _fabriquer_agent_depuis_env() -> IAgent | None:
+    """Option TUI : si SNAKE_AGENT est défini, on joue en mode auto.
+
+    Exemples :
+      - SNAKE_AGENT=aleatoire
+      - SNAKE_AGENT=curiosite_tabulaire
+      - SNAKE_AGENT=planif_mpc_tabulaire
+      - SNAKE_AGENT=planif_mpc_observateur_tabulaire
+      - SNAKE_AGENT=planif_1pas_temperament
+
+    Paramètres :
+      - SNAKE_AGENT_SEED (int)
+      - SNAKE_AGENT_EPSILON (float)
+      - SNAKE_AGENT_LATENT (str, ex: checksum, signaux_percus_hash_v1)
+    """
+    nom = os.getenv("SNAKE_AGENT", "").strip().lower()
+    if not nom:
+        return None
+
+    seed = os.getenv("SNAKE_AGENT_SEED")
+    epsilon = os.getenv("SNAKE_AGENT_EPSILON", "0.0")
+    mode_latent = os.getenv("SNAKE_AGENT_LATENT", "checksum")
+
+    seed_int = int(seed) if seed not in (None, "") else None
+
+    # On privilégie `agent_runtime` (cours 5) ; wrappers vers cours 4.
+    if nom == "aleatoire":
+        from agent_service.app.agent_runtime.agents_in_arene import AgentAleatoire
+
+        return AgentAleatoire(seed=seed_int, epsilon=float(epsilon))
+
+    if nom == "curiosite_tabulaire":
+        # paramètres de curiosité définis dans le module historique (cours 4)
+        from agent_service.app.agents.agent_curiosite_tabulaire import ParametresCuriosite
+        from agent_service.app.agent_runtime.agents_in_arene import AgentCuriositeTabulaire
+
+        params = ParametresCuriosite(
+            epsilon=float(epsilon),
+            w_inconnu=float(os.getenv("SNAKE_W_INCONNU", "1.0")),
+            w_entropie=float(os.getenv("SNAKE_W_ENTROPIE", "1.0")),
+            w_inconfiance=float(os.getenv("SNAKE_W_INCONFIANCE", "1.0")),
+        )
+        return AgentCuriositeTabulaire(seed=seed_int, params=params, mode_latent=mode_latent)
+
+    if nom == "planif_mpc_tabulaire":
+        from agent_service.app.agent_runtime.agents_in_arene.agent_planif_mpc_tabulaire import (
+            AgentPlanifMPC as AgentPlanifMPCTabulaire,
+        )
+
+        return AgentPlanifMPCTabulaire(seed=seed_int, mode_latent=mode_latent)
+
+    if nom == "planif_mpc_observateur_tabulaire":
+        from agent_service.app.agent_runtime.agents_in_arene.agent_planif_mpc_observateur_tabulaire import (
+            AgentPlanifMPCObservateurTabulaire,
+        )
+
+        return AgentPlanifMPCObservateurTabulaire(seed=seed_int, mode_latent=mode_latent)
+
+    if nom == "planif_1pas_temperament":
+        from agent_service.app.agent_runtime.agents_in_arene.agent_planif_1pas_temperament_v1 import (
+            AgentPlanif1PasTemperamentV1,
+        )
+
+        return AgentPlanif1PasTemperamentV1(seed=seed_int, mode_latent=mode_latent)
+
+    raise SystemExit(f"SNAKE_AGENT inconnu: {nom!r}")
+
 
 def boucle_episodes(
     bus: BusEtatMemoire,
@@ -60,21 +131,23 @@ def boucle_episodes(
         regle_ouverture_porte=ar.regle_ouverture,
         palette=ar.palette,
     )
-    journal = JournalEpisodes(racine_projet=racine_projet)
+
+    # journal (optionnel)
+    journal = JournalEpisodes(racine_projet)
+
+    # agent auto (optionnel) — sinon mode manuel (direction via TUI)
+    agent = _fabriquer_agent_depuis_env()
+    perception = ContextePerception(champ_vision_deg=180)
+
+    run_id = time.strftime("%Y%m%d_%H%M%S")
     episode_id = 0
-    # Identifiant de session (stable pour tout le process)
-    run_id = str(time.time_ns())
 
     while True:
-        episode_id += 1
         monde = MondeSnake(cfg)
-
-        # bruit piloté par TUI
+        monde.reset()
         niveau_bruit = controle.niveau_bruit()
         capteurs, rendu_debug = monde.observer(niveau_bruit=niveau_bruit)
-        capteurs_canon, _ = monde.observer(niveau_bruit=0)
-        mesure_bruit = _mesurer_bruit(capteurs_canon, capteurs)
-        # observation initiale
+
         bus.publier(
             Observation(
                 run_id=run_id,
@@ -82,7 +155,7 @@ def boucle_episodes(
                 tick=monde.tick,
                 capteurs=capteurs,
                 rendu_debug=rendu_debug,
-                mesure_bruit=mesure_bruit,
+                mesure_bruit="",
                 score=monde.score,
                 longueur=len(monde.serpent),
                 termine=monde.termine,
@@ -105,24 +178,36 @@ def boucle_episodes(
         )
 
         for _ in range(ticks_max):
-            # reset demandé ? on redémarre un épisode immédiatement
             if controle.consommer_reset():
                 break
 
             controle.attendre_autorisation()
 
-            # reset peut aussi être demandé pendant l'attente
             if controle.consommer_reset():
                 break
 
-            # mode assisté: direction 1-shot si fournie par le TUI
-            direction = controle.consommer_direction()
-            monde.step(direction=direction)
+            if agent is None:
+                # mode assisté: direction 1-shot si fournie par le TUI
+                direction = controle.consommer_direction()
+                monde.step(direction=direction)
+            else:
+                # mode auto: l'agent décide depuis l'observation courante
+                contexte = ContexteDecision(
+                    run_id=run_id,
+                    episode_id=episode_id,
+                    tick=monde.tick,
+                    largeur=cfg.largeur,
+                    hauteur=cfg.hauteur,
+                    perception=perception,
+                )
+                direction = agent.choisir_action(capteurs=capteurs, contexte=contexte)
+                monde.step(direction=direction)
 
             niveau_bruit = controle.niveau_bruit()
             capteurs, rendu_debug = monde.observer(niveau_bruit=niveau_bruit)
             capteurs_canon, _ = monde.observer(niveau_bruit=0)
             mesure_bruit = _mesurer_bruit(capteurs_canon, capteurs)
+
             bus.publier(
                 Observation(
                     run_id=run_id,
@@ -153,18 +238,16 @@ def boucle_episodes(
             )
 
             if monde.termine:
-                # Ne PAS enchaîner automatiquement.
-                # On attend un reset explicite (r) pour démarrer un nouvel épisode.
                 while True:
-                    # si reset => on sort et on recrée un monde (nouvel episode_id)
                     if controle.consommer_reset():
                         break
-                    # sinon, on laisse le TUI vivre (pause/step/vitesse)
-                    # step n'a pas d'effet ici: épisode terminé.
                     time.sleep(0.05)
                 break
 
+            # cadence UI
             time.sleep(controle.delai_s())
+
+        episode_id += 1
 
 
 def main() -> None:
@@ -175,4 +258,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
