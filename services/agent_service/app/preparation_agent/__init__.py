@@ -6,4 +6,9 @@ catalogue de têtes et d'un tronc, en consommant éventuellement des connaissanc
 épistémiques (registre) et des épisodes (jsonl).
 
 ce module ne doit pas contenir de logique "tick -> action" (ça, c'est agent_runtime).
+
+Usage :
+    ui_cli : outils de préparation d'agent (sai-a107)
+
+    commande: ui_cli preparer-agent <sous-commande> ...
 """

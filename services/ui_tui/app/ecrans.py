@@ -218,6 +218,9 @@ def _resume_observation(obs: Any) -> str:
             for ln in rendu[:12]:
                 lignes.append(str(ln))
         return "\n".join(lignes)
+    except Exception as e:
+        # ne jamais casser l'écran de stats
+        return f"(stats) erreur: {e!r}"
 
 
 class DialogueAllerEpisode(ModalScreen[int | None]):
