@@ -5,7 +5,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, List
 
 import yaml
 
@@ -32,8 +32,9 @@ class BacASableV1:
 
     Rôles:
     - charger experience.yml
-    - résoudre chemins relatifs -> absolus (base: dossier de l'expérience)
-    - fournir des répertoires canoniques (datasets/diagnostics/registres/runs)
+    - fournir des répertoires canoniques (datasets/diagnostics/registres/runs/notes)
+    - préparer un run (run_dir + chemins attendus)
+    - (optionnel) exporter quelques env liées au modèle monde
     """
 
     def __init__(self, racine_projet: Path, experience_id: str, experience_dir: Path, cfg: Dict[str, Any]):
@@ -80,10 +81,7 @@ class BacASableV1:
     # Résolution de chemins / structure
 
     def resoudre_chemin(self, p: str | Path) -> Path:
-        """Résout un chemin relatif en chemin absolu.
-
-        Base = dossier de l'expérience (pas la racine projet).
-        """
+        """Résout un chemin relatif en chemin absolu (base = dossier expérience)."""
         pp = Path(p)
         if pp.is_absolute():
             return pp
@@ -91,13 +89,12 @@ class BacASableV1:
 
     def assurer_structure(self) -> Dict[str, Any]:
         """Crée la structure minimale si absente. Retourne un rapport (dict)."""
-        cree = []
+        cree: List[str] = []
 
         if not self.experience_dir.exists():
             self.experience_dir.mkdir(parents=True, exist_ok=True)
             cree.append(str(self.experience_dir))
 
-        # sous-répertoires canonique
         for p in [
             self.paths.artefacts_dir,
             self.paths.runs_dir,
@@ -148,6 +145,21 @@ sorties:
             )
             cree.append(str(exp_yml))
 
+        readme = self.experience_dir / "README.md"
+        if not readme.exists():
+            readme.write_text(
+                f"""# bac à sable : {self.experience_id}\n\n"""
+                "ce README sert de page d'accueil de l'expérience.\n"
+                "\n"
+                "- objectif\n"
+                "- protocole\n"
+                "- runs significatifs\n"
+                "- résultats (synthèse)\n"
+                ,
+                encoding="utf-8",
+            )
+            cree.append(str(readme))
+
         return {"experience_dir": str(self.experience_dir), "creations": cree}
 
     # ---------------------------------------------------------------------
@@ -182,16 +194,49 @@ sorties:
         meta_path = run_dir / "meta.json"
         return run_dir, journal_path, stdout_path, meta_path
 
+    def lister_runs(self) -> list[Path]:
+        """Liste les répertoires de runs existants (triés du plus ancien au plus récent)."""
+        if not self.paths.runs_dir.exists():
+            return []
+        runs = [p for p in self.paths.runs_dir.iterdir() if p.is_dir()]
+        runs.sort(key=lambda p: p.name)
+        return runs
+
+    def resoudre_run_existant(self, run_id: Optional[str] = None) -> Tuple[Path, Path, Path, Path]:
+        """Retourne (run_dir, journal_path, stdout_path, meta_path) pour un run existant.
+
+        `run_id` correspond au nom de répertoire sous `artefacts/runs/`.
+        Si absent, on choisit le dernier run disponible.
+        """
+        self.paths.runs_dir.mkdir(parents=True, exist_ok=True)
+        runs = self.lister_runs()
+        if not runs:
+            raise FileNotFoundError(
+                f"Aucun run trouvé pour l'expérience {self.experience_id!r}. "
+                "Lance d'abord ui_cli / runner pour générer des épisodes."
+            )
+
+        if run_id:
+            run_dir = self.paths.runs_dir / run_id
+            if not run_dir.exists() or not run_dir.is_dir():
+                raise FileNotFoundError(f"Run introuvable: {run_dir}")
+        else:
+            run_dir = runs[-1]
+
+        journal_path = run_dir / self.nom_fichier_journal_defaut()
+        stdout_path = run_dir / "stdout.log"
+        meta_path = run_dir / "meta.json"
+
+        if not journal_path.exists():
+            raise FileNotFoundError(f"Journal du run introuvable: {journal_path}")
+
+        return run_dir, journal_path, stdout_path, meta_path
+
     # ---------------------------------------------------------------------
     # Export env: modèle monde
 
     def appliquer_env_modele_monde(self) -> Dict[str, Any]:
-        """Résout et exporte les variables d'environnement liées au modèle monde.
-
-        - SNAKE_MODELE_JOURNAL : chemin absolu vers le journal d'entraînement
-        - SNAKE_CHAMP_LATENT   : nom du champ latent à lire dans le journal
-        - SNAKE_MODE_LATENT_CLI: (optionnel) mode latent par défaut côté ui_cli
-        """
+        """Résout et exporte les variables d'environnement liées au modèle monde."""
         mm = self.cfg.get("modele_monde") if isinstance(self.cfg, dict) else None
         if not isinstance(mm, dict):
             return {"event": "modele_monde_absent", "experience": self.experience_id}

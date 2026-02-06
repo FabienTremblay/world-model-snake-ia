@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import replace
-from typing import Iterable, Optional
+from typing import Iterable
 
 from agent_service.app.modele_monde.latent_v1 import encoder_latent
 
@@ -14,7 +13,6 @@ def calculer_indices(
     *,
     mode_latent: str | None = None,
 ) -> IndicesEpistemiques:
-    """Calcule des indices épistémiques simples à partir des ticks."""
     c_raisons = Counter()
     c_actions = Counter()
     c_latent = Counter()
@@ -44,7 +42,8 @@ def calculer_indices(
 
     if run_id is None:
         run_id = ""
-    idx = IndicesEpistemiques(
+
+    return IndicesEpistemiques(
         run_id=run_id,
         arene_id=arene_id,
         episodes=len(episodes),
@@ -54,4 +53,3 @@ def calculer_indices(
         latents_distincts=(len(c_latent) if mode_latent else None),
         latent_top=(c_latent.most_common(10) if mode_latent else None),
     )
-    return idx

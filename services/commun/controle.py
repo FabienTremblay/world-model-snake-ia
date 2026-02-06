@@ -29,6 +29,8 @@ class ControleExecution:
         self._replay_slot: Optional[int] = None
         self._direction_lock = threading.Lock()
         self._direction: Optional[str] = None  # "haut"|"bas"|"gauche"|"droite"
+        self._episode_lock = threading.Lock()
+        self._episode_demande: Optional[int] = None  # episode_id demandé (replay)
 
     def est_en_pause(self) -> bool:
         return self._pause.is_set()
@@ -117,3 +119,17 @@ class ControleExecution:
             d = self._direction
             self._direction = None
             return d
+
+    def demander_episode(self, episode_id: int) -> None:
+        """Demande de basculer le replay vers un épisode (episode_id)."""
+        with self._episode_lock:
+            self._episode_demande = int(episode_id)
+
+    def consommer_episode(self) -> Optional[int]:
+        """Retourne l'episode_id demandé et le consomme."""
+        with self._episode_lock:
+            eid = self._episode_demande
+            self._episode_demande = None
+            return eid
+
+ 

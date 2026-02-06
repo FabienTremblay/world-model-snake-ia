@@ -12,6 +12,7 @@ def executer_pipeline_epistemique_v2(
     *,
     path_journal: Path,
     path_sortie_registre: Path,
+    sources: dict[str, str],
     mode_latent: str | None = None,
 ) -> None:
     ticks = list(lire_journal_ticks(path_journal))
@@ -20,6 +21,7 @@ def executer_pipeline_epistemique_v2(
     registre = creer_registre(
         run_id=indices.run_id,
         arene_id=indices.arene_id,
+        sources=sources,
         indices=indices,
         hypotheses=hypotheses,
     )

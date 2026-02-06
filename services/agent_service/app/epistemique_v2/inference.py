@@ -4,16 +4,8 @@ from .contrats import HypotheseV2, IndicesEpistemiques
 
 
 def inferer_hypotheses(indices: IndicesEpistemiques) -> list[HypotheseV2]:
-    """Règles d'inférence v2 (démarrage cours 5).
-
-    On démarre volontairement simple :
-    - stabilité/instabilité du latent (si activé)
-    - prédominance d'une raison de fin
-    - action bias fort (une action utilisée de façon disproportionnée)
-    """
     hyps: list[HypotheseV2] = []
 
-    # 1) latent instable si trop de latents distincts par rapport aux ticks
     if indices.latents_distincts is not None and indices.ticks > 0:
         ratio = indices.latents_distincts / max(1, indices.ticks)
         if ratio > 0.4:
@@ -38,7 +30,6 @@ def inferer_hypotheses(indices: IndicesEpistemiques) -> list[HypotheseV2]:
                 )
             )
 
-    # 2) raison de fin dominante
     total_fin = sum(indices.raisons_fin.values())
     if total_fin >= 10:
         raison, n = max(indices.raisons_fin.items(), key=lambda kv: kv[1])
@@ -61,7 +52,6 @@ def inferer_hypotheses(indices: IndicesEpistemiques) -> list[HypotheseV2]:
                 )
             )
 
-    # 3) biais d'action
     total_actions = sum(indices.actions.values())
     if total_actions >= 50:
         action, n = max(indices.actions.items(), key=lambda kv: kv[1])

@@ -12,7 +12,6 @@ def charger_registre(path: Path) -> RegistreEpistemiqueV2 | None:
     if not path.exists():
         return None
     d = json.loads(path.read_text(encoding="utf-8"))
-    # reconstruction simple (v2) : on ne dépend pas d'une lib de sérialisation
     indices_d = d.get("indices")
     indices = None
     if indices_d:
@@ -23,6 +22,7 @@ def charger_registre(path: Path) -> RegistreEpistemiqueV2 | None:
         genere_ts_ns=int(d.get("genere_ts_ns", 0)),
         run_id=str(d.get("run_id", "")),
         arene_id=d.get("arene_id"),
+        sources=dict(d.get("sources", {}) or {}),
         indices=indices,
         hypotheses=hypotheses,
     )
@@ -37,6 +37,7 @@ def creer_registre(
     *,
     run_id: str,
     arene_id: str | None,
+    sources: dict[str, str],
     indices: IndicesEpistemiques,
     hypotheses: list[HypotheseV2],
 ) -> RegistreEpistemiqueV2:
@@ -45,6 +46,7 @@ def creer_registre(
         genere_ts_ns=time.time_ns(),
         run_id=run_id,
         arene_id=arene_id,
+        sources=sources,
         indices=indices,
         hypotheses=hypotheses,
     )

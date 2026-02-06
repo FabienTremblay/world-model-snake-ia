@@ -154,3 +154,12 @@ def construire_source(mode: str, journal_path: Optional[Path] = None) -> tuple[S
     src = SourceLive(bus, controle)
     src.start()
     return src, bus, controle
+
+
+# --- Compat UI_TUI ---
+def demarrer_session(mode: str, journal_path: Optional[Path] = None):
+    """Démarre une session LIVE ou REPLAY.
+
+    Compatibilité: certains écrans importent `demarrer_session`.
+    """
+    return construire_source(mode=mode, journal_path=journal_path)

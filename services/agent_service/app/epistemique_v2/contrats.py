@@ -32,10 +32,7 @@ class EvenementTick:
 
 @dataclass(frozen=True)
 class IndicesEpistemiques:
-    """Indices agrégés (v2).
-
-    Ces indices sont volontairement simples au démarrage du cours 5.
-    """
+    """Indices agrégés (v2)."""
 
     run_id: str
     arene_id: str | None
@@ -68,5 +65,6 @@ class RegistreEpistemiqueV2:
     genere_ts_ns: int = 0
     run_id: str = ""
     arene_id: str | None = None
+    sources: dict[str, str] = field(default_factory=dict)
     indices: Optional[IndicesEpistemiques] = None
     hypotheses: list[HypotheseV2] = field(default_factory=list)
