@@ -1,95 +1,36 @@
-# ui_cli — exécution headless (batch) pour génération de journaux
+# ui_cli — exécution headless (batch) ancrée sur une expérience
 
-ce service fournit une entrée cli pour exécuter des épisodes snake sans interface (headless),
-afin de générer des journaux compatibles avec le mode live (ui_tui) et les outils d’évaluation
-du world model.
+`ui_cli` exécute des épisodes *Snake* **sans interface graphique** (mode headless) et produit des journaux `.jsonl` compatibles avec l'écosystème (*recoders*, diagnostics, APK, agents de planification, etc.).
 
-## nouveautés (cours 2)
-- `--latent` permet de choisir la définition de l’état latent :
-  - `checksum` : très discriminant (cours 1)
-  - `discret_v1` : plus invariant au bruit (cours 2)
+## règle de discipline
 
-## usage
+- `ui_cli` **n'écrit plus jamais dans `./artefacts`** à la racine du projet.
+- `--experience <id>` est **obligatoire**.
+- les sorties vont sous :
+  - `donnees/config/experiences/<id>/artefacts/runs/<run>/...`
 
-### curiosité tabulaire + latent discret (invariance au bruit)
-```bash
-PYTHONPATH=services python -m ui_cli.app.main \
-  --arene demo_v0 \
-  --episodes 200 \
-  --max-ticks 2000 \
-  --agent curiosite_tabulaire \
-  --latent discret_v1 \
-  --epsilon 0.05 \
-  --seed 123 \
-  --truncate \
-  --journal artefacts/episodes_latent_discret.jsonl \
-  --metrics artefacts/exploration_metrics_latent_discret.jsonl
-```
-
-### évaluation (offline)
-```bash
-PYTHONPATH=services python -m agent_service.app.modele_monde.evaluer_tabulaire_v1 \
-  --journal artefacts/episodes_latent_discret.jsonl \
-  --mode split \
-  --ratio-train 0.7
-```
-
-# ui_cli — exécution headless et bacs-à-sable d’expérience
-
-`ui_cli` fournit une interface en ligne de commande pour exécuter des épisodes *Snake* **sans interface graphique** (mode headless), afin de :
-
-- générer des journaux d’épisodes (`.jsonl`)
-- alimenter les recoders, diagnostics et APK
-- soutenir l’apprentissage et l’évaluation des *world models*
-
-À partir du **cours 4**, `ui_cli` introduit la notion de **bac-à-sable d’expérience**, qui devient la manière recommandée d’orchestrer les exécutions.
+Cette discipline garantit : reproductibilité, traçabilité, et enchaînement outillé sans chemins “à la main”.
 
 ---
 
-## idée clé : le bac-à-sable d’expérience
+## bac-à-sable d'expérience
 
-Un **bac-à-sable** est un dossier d’expérience auto-contenu, décrit par un fichier :
+Une expérience est décrite par :
 
 ```
 donnees/config/experiences/<id>/experience.yml
 ```
 
-Il définit :
-- le contexte expérimental (arène, agent, latent, paramètres)
-- les jeux de données d’entrée (journaux existants)
-- les sorties standardisées (runs, datasets, diagnostics, registres)
-
-Lorsque `--experience <id>` est fourni :
-- `ui_cli` **crée ou détecte** la structure du bac-à-sable
-- les chemins relatifs sont résolus par rapport à l’expérience
-- les sorties sont automatiquement organisées sous `artefacts/`
-
-👉 le bac-à-sable devient la **source de vérité** pour :
-- la reproductibilité
-- la traçabilité
-- l’enchaînement des outils (recoders, diagnostics, APK)
+Quand `--experience <id>` est fourni, `ui_cli` :
+- crée/détecte la structure du bac-à-sable
+- applique des *defaults* depuis `experience.yml` (si l'utilisateur n'a pas surchargé sur la CLI)
+- prépare un répertoire de run horodaté sous `artefacts/runs/`
 
 ---
 
-## structure d’un bac-à-sable
+## commandes
 
-```
-donnees/config/experiences/cours4/
-├── experience.yml
-├── README.md
-└── artefacts/
-    ├── runs/          # exécutions ui_cli (journaux + métriques)
-    ├── datasets/      # journaux recodés
-    ├── diagnostics/   # rapports d’analyse
-    ├── registres/     # registres épistémiques (APK)
-    └── notes/
-```
-
----
-
-## usage recommandé (avec bac-à-sable)
-
-### exécution minimale pilotée par `experience.yml`
+### exécution minimale (pilotée par `experience.yml`)
 
 ```bash
 PYTHONPATH=services python -m ui_cli.app.main \
@@ -97,11 +38,7 @@ PYTHONPATH=services python -m ui_cli.app.main \
   --episodes 200
 ```
 
-- l’arène, l’agent, le latent et la seed peuvent être définis dans `experience.yml`
-- un nouveau *run* est créé sous `artefacts/runs/<timestamp>/`
-- le journal d’épisodes est automatiquement nommé et placé
-
-### surcharge ponctuelle depuis la ligne de commande
+### surcharge ponctuelle depuis la CLI
 
 ```bash
 PYTHONPATH=services python -m ui_cli.app.main \
@@ -110,61 +47,62 @@ PYTHONPATH=services python -m ui_cli.app.main \
   --episodes 50
 ```
 
-Règle :
-- **CLI > experience.yml > valeurs par défaut**
-- seules les options explicitement passées sur la CLI remplacent l’expérience
+Règle : **CLI > experience.yml > valeurs par défaut**.
 
 ---
 
-## variables d’environnement résolues automatiquement
+## métriques
 
-Si `experience.yml` contient une section `modele_monde`, `ui_cli` exporte :
+Par défaut, si `--metrics` n'est pas fourni, `ui_cli` écrit :
+
+- `artefacts/runs/<run>/metrics.jsonl`
+
+Si l'agent expose `get_sorties_tetes()`, le champ `sorties_tetes` est ajouté aux lignes de métriques.
+
+---
+
+## agent_personne (A107/A108)
+
+### exécuter un agent-personne par id
+
+L'agent-personne est un artefact produit par le pipeline de préparation (A107) :
+
+```
+donnees/config/experiences/<exp>/artefacts/agent_personne/<agent_personne_id>/agent_personne.json
+```
+
+Exécution :
+
+```bash
+PYTHONPATH=services python -m ui_cli.app.main \
+  --experience cours4 \
+  --arene cours4_tiny_planification \
+  --agent agent_personne \
+  --agent-personne-id ap_cours4_v1 \
+  --episodes 5 --max-ticks 2000 --seed 123
+```
+
+### exécuter un agent-personne par chemin
+
+```bash
+PYTHONPATH=services python -m ui_cli.app.main \
+  --experience cours4 \
+  --arene cours4_tiny_planification \
+  --agent agent_personne \
+  --agent-personne-path artefacts/agent_personne/ap_cours4_v1/agent_personne.json \
+  --episodes 5 --max-ticks 2000 --seed 123
+```
+
+Note : les chemins relatifs sont résolus **dans le bac-à-sable** (pas dans `./`).
+
+---
+
+## variables d'environnement (modèle du monde)
+
+Si `experience.yml` contient une section `modele_monde`, `ui_cli` exporte automatiquement :
 
 - `SNAKE_MODELE_JOURNAL`
 - `SNAKE_CHAMP_LATENT`
 - `SNAKE_MODE_LATENT_CLI`
 
-Ces variables sont utilisées **sans duplication** par :
-- recoders
-- diagnostics
-- agents de planification
-- APK épistémiques
-
----
-
-## usage historique (sans bac-à-sable)
-
-L’usage direct reste supporté, notamment pour les cours initiaux.
-
-### curiosité tabulaire + latent discret
-
-```bash
-PYTHONPATH=services python -m ui_cli.app.main \
-  --arene demo_v0 \
-  --episodes 200 \
-  --max-ticks 2000 \
-  --agent curiosite_tabulaire \
-  --latent discret_v1 \
-  --epsilon 0.05 \
-  --seed 123 \
-  --truncate \
-  --journal artefacts/episodes_latent_discret.jsonl \
-  --metrics artefacts/exploration_metrics_latent_discret.jsonl
-```
-
-⚠️ dans ce mode :
-- l’utilisateur est responsable de l’organisation des fichiers
-- les outils aval (recoders, diagnostics) doivent être configurés à la main
-
----
-
-## philosophie
-
-- le bac-à-sable **n’est pas un framework**
-- c’est un *contrat léger* entre les outils
-- il permet de raisonner en **expériences**, pas en fichiers isolés
-
-À mesure que les cours avancent, il devient le support naturel pour :
-- comparer des hypothèses
-- versionner des datasets
-- accumuler des connaissances épistémiques
+Ces variables sont consommées par les recoders/diagnostics/agents sans duplication.

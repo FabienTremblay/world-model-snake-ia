@@ -278,34 +278,57 @@ def _resoudre_path_arene(racine: Path, arene: str) -> Path:
         return racine / "donnees" / "config" / "arenes" / f"{s}.yml"
     return racine / s
 
+def _resoudre_path_utilisateur(racine_projet: Path, exp_dir: Path | None, run_dir: Path | None, chemin: str) -> Path:
+    # règle: si chemin absolu, on le garde; sinon on l'ancre sur exp_dir si disponible, sinon sur run_dir, sinon sur racine_projet
+    s = (chemin or '').strip()
+    p = Path(s)
+    if not s:
+        raise ValueError('chemin vide')
+    if p.is_absolute():
+        return p
+    if exp_dir is not None:
+        return (exp_dir / p).resolve()
+    if run_dir is not None:
+        return (run_dir / p).resolve()
+    return (racine_projet / p).resolve()
+
+
 
 def _fabriquer_agent(args: argparse.Namespace) -> IAgent:
     nom = args.agent.strip().lower()
 
-    if nom == "agent_personne":
-    from agent_service.app.agent_runtime.agent_incarnations.agent_personne_runtime_v1 import AgentPersonneRuntimeV1
-    # résolution du path depuis --experience (artefacts/agent_personne/<id>/agent_personne.json)
-    return AgentPersonneRuntimeV1(agent_personne_path=..., seed=args.seed, mode_latent=args.latent)
+    if nom == 'agent_personne':
+        from agent_service.app.agent_runtime.agent_incarnations.agent_personne_runtime_v1 import AgentPersonneRuntimeV1
 
-    if nom == "aleatoire":
+        agent_personne_path = None
+        if getattr(args, 'agent_personne_path', None):
+            agent_personne_path = str(args.agent_personne_path)
+        elif getattr(args, 'agent_personne_id', None):
+            # si on a --experience (obligatoire), on résout sous artefacts/agent_personne/<id>/agent_personne.json
+            racine = _racine_projet()
+            exp_dir = _chemin_experience(racine, str(args.experience))
+            agent_personne_path = str((exp_dir / 'artefacts' / 'agent_personne' / str(args.agent_personne_id) / 'agent_personne.json').resolve())
+
+        if not agent_personne_path:
+            raise SystemExit("agent_personne: fournir --agent-personne-path, ou bien --agent-personne-id (avec --experience)")
+
+        return AgentPersonneRuntimeV1(agent_personne_path=agent_personne_path, seed=args.seed, mode_latent=args.latent)
+
+    if nom == 'aleatoire':
         return AgentAleatoire(seed=args.seed, epsilon=float(args.epsilon))
-    if nom == "planif_mpc_tabulaire":
+    if nom == 'planif_mpc_tabulaire':
         from agent_service.app.agents.agent_planif_mpc_tabulaire import AgentPlanifMPCTabulaire
 
-        # paramètres conservateurs par défaut (cours 4)
         return AgentPlanifMPCTabulaire(seed=args.seed, mode_latent=args.latent)
-    if nom == "planif_mpc_observateur_tabulaire":
+    if nom == 'planif_mpc_observateur_tabulaire':
         from agent_service.app.agents.agent_planif_mpc_observateur_tabulaire import AgentPlanifMPCObservateurTabulaire
         return AgentPlanifMPCObservateurTabulaire(seed=args.seed, mode_latent=args.latent)
 
-    if nom == "planif_1pas_temperament":
-        from agent_service.app.agents.agent_planif_1pas_temperament_v1 import (
-            AgentPlanif1PasTemperamentV1,
-        )
+    if nom == 'planif_1pas_temperament':
+        from agent_service.app.agents.agent_planif_1pas_temperament_v1 import AgentPlanif1PasTemperamentV1
 
         return AgentPlanif1PasTemperamentV1(seed=args.seed, mode_latent=args.latent)
-    if nom == "curiosite_tabulaire":
-        # epsilon = exploration aléatoire (epsilon-greedy)
+    if nom == 'curiosite_tabulaire':
         from agent_service.app.agents.agent_curiosite_tabulaire import ParametresCuriosite
 
         params = ParametresCuriosite(
@@ -315,7 +338,9 @@ def _fabriquer_agent(args: argparse.Namespace) -> IAgent:
             w_inconfiance=float(args.w_inconfiance),
         )
         return AgentCuriositeTabulaire(seed=args.seed, params=params, mode_latent=args.latent)
-    raise SystemExit(f"agent inconnu: {args.agent!r} (attendus: aleatoire, curiosite_tabulaire, planif_mpc_tabulaire, planif_mpc_observateur_tabulaire)")
+    raise SystemExit(
+        f"agent inconnu: {args.agent!r} (attendus: aleatoire, curiosite_tabulaire, planif_mpc_tabulaire, planif_mpc_observateur_tabulaire, planif_1pas_temperament, agent_personne)"
+    )
 
 def _ecrire_metrics(
     fp,
@@ -349,6 +374,15 @@ def _ecrire_metrics(
                 "support": int(pred.support),
             }
         )
+
+
+    # sorties de têtes (A108) si l'agent expose un accès journalisable
+    get_sorties_tetes = getattr(agent, 'get_sorties_tetes', None)
+    if callable(get_sorties_tetes):
+        try:
+            ligne['sorties_tetes'] = get_sorties_tetes()
+        except Exception as e:
+            ligne['sorties_tetes'] = {'erreur': str(e)}
 
     fp.write(json.dumps(ligne, ensure_ascii=False) + "\n")
 
@@ -399,7 +433,24 @@ def construire_parser() -> argparse.ArgumentParser:
         "--agent",
         type=str,
         default="aleatoire",
-        help="Agent: aleatoire | curiosite_tabulaire | planif_mpc_tabulaire | planif_1pas_temperament",
+        help="Agent: aleatoire | curiosite_tabulaire | planif_mpc_tabulaire | planif_mpc_observateur_tabulaire | planif_1pas_temperament | agent_personne",
+    )
+    ap.add_argument(
+        '--agent-personne-id',
+        dest='agent_personne_id',
+        type=str,
+        default=None,
+        help=(
+            "Id d'agent-personne (A107) sous artefacts/agent_personne/<id>/agent_personne.json. "
+            "Requiert --experience."
+        ),
+    )
+    ap.add_argument(
+        '--agent-personne-path',
+        dest='agent_personne_path',
+        type=str,
+        default=None,
+        help="Chemin explicite vers un agent_personne.json (override de --agent-personne-id).",
     )
     ap.add_argument(
         "--latent",
@@ -428,8 +479,8 @@ def construire_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--journal",
         type=str,
-        default="artefacts/episodes.jsonl",
-        help="Chemin de sortie du journal episodes.jsonl.",
+        default="journal_episodes.jsonl",
+        help="Chemin de sortie du journal episodes.jsonl (chemin relatif ancré sur l'expérience).",
     )
     ap.add_argument(
         "--truncate",
@@ -548,12 +599,16 @@ def main(argv: list[str] | None = None) -> None:
     # Identifiant d'exécution (partagé partout)
     run_id = str(time.time_ns())
 
+    # Discipline: exiger un bac à sable d'expérience (pas d'écriture dans ./artefacts)
+    if not args.experience:
+        raise SystemExit("ui_cli: --experience est requis (le répertoire ./artefacts n'est plus utilisé).")
+
     # Si on lance via un bac à sable (expérience), on résout un répertoire de run dédié.
     exp_dir: Path | None = None
     run_dir: Path | None = None
     stdout_path: Path | None = None
     meta_path: Path | None = None
-    if args.experience:
+    if True:
 
         bac = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
         rapport = bac.assurer_structure()
@@ -593,6 +648,18 @@ def main(argv: list[str] | None = None) -> None:
 
         if args.metrics is None:
             args.metrics = str(run_dir / "metrics.jsonl")
+
+
+        # agent-personne-path : si relatif, l'ancrer aussi sur l'expérience/run (évite ./)
+        if getattr(args, "agent_personne_path", None):
+            args.agent_personne_path = str(
+                _resoudre_path_utilisateur(
+                    racine_projet=racine,
+                    exp_dir=bac.experience_dir,
+                    run_dir=run_dir,
+                    chemin=str(args.agent_personne_path),
+                )
+            )
 
         # env modèle monde
         payload_mm = bac.appliquer_env_modele_monde()
@@ -676,6 +743,7 @@ def main(argv: list[str] | None = None) -> None:
                 metrics_fp = metrics_path.open("w", encoding="utf-8")
 
             agent = _fabriquer_agent(args)
+            print({"event":"agent_instancie","type":type(agent).__name__,"module":type(agent).__module__}, flush=True)
 
             # exécution (noyau runner commun — cours 5)
             params_exec = ParametresExecution(

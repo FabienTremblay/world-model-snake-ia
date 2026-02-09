@@ -4,9 +4,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
-from agent_service.app.agents.contrats import IAgent
+from commun.contrats import Pixel
+from agent_service.app.agent_runtime.agents_in_arene.contrats import ContexteDecision, IAgent
 
 
 ACTIONS_PAR_DEFAUT = ("avant", "gauche", "droite")  # adapte si tes actions diffèrent
@@ -52,8 +53,6 @@ class AgentPersonneRuntimeV1(IAgent):
             raise FileNotFoundError(f"agent_personne introuvable: {p}")
         return json.loads(p.read_text(encoding="utf-8"))
 
-    # --- API IAgent (tu adaptes si ton interface diffère) ---
-
     def reinitialiser(self) -> None:
         self.memoire = {
             "tick": 0,
@@ -62,21 +61,20 @@ class AgentPersonneRuntimeV1(IAgent):
         }
         self._sorties_tetes = SortiesTetes(valeurs={})
 
-    def decider(self, contexte_decision) -> str:
-        """
-        contexte_decision contient typiquement (selon ton runner) :
-        - latent courant (z)
-        - autres infos de perception (capteurs)
-        """
-        z = getattr(contexte_decision, "latent", None)
-        self.memoire["tick"] = int(self.memoire.get("tick", 0)) + 1
-        self.memoire["dernier_latent"] = z
 
-        # 1) calculer sorties de têtes (placeholder)
-        self._sorties_tetes = self._evaluer_tetes_placeholder(contexte_decision)
+    # --- API IAgent ---
+    def choisir_action(self, capteurs: list[list[Pixel]], contexte: ContexteDecision) -> str:
+        # tick courant (celui du monde AVANT l'action)
+        self.memoire["tick"] = int(contexte.tick)
 
-        # 2) décider action (placeholder)
-        action = self._policy_placeholder(contexte_decision)
+        # 1) sorties de têtes (placeholder)
+        self._sorties_tetes = self._evaluer_tetes_placeholder(capteurs=capteurs, contexte=contexte)
+
+        # 2) policy (placeholder) : doit TOUJOURS retourner une action valide
+        action = self._policy_placeholder(capteurs=capteurs, contexte=contexte)
+        if action is None:
+            # garde-fou : ne jamais laisser None remonter au runner
+            action = ACTIONS_PAR_DEFAUT[0]
 
         self.memoire["derniere_action"] = action
         return action
@@ -87,7 +85,7 @@ class AgentPersonneRuntimeV1(IAgent):
 
     # --- implémentations placeholder (phase 1) ---
 
-    def _evaluer_tetes_placeholder(self, contexte_decision) -> SortiesTetes:
+    def _evaluer_tetes_placeholder(self, capteurs: list[list[Pixel]], contexte: ContexteDecision) -> SortiesTetes:
         tetes = self.agent_personne.get("tetes") or []
         out: dict[str, Any] = {}
         for t in tetes:
@@ -101,7 +99,6 @@ class AgentPersonneRuntimeV1(IAgent):
         out.setdefault("mode_enjeu", "neutre")
         return SortiesTetes(valeurs=out)
 
-    def _policy_placeholder(self, contexte_decision) -> str:
-        # placeholder ultra-simple : avance sinon tourne (à remplacer par vraie policy)
-        # si ton moteur a des contraintes d'action, c'est ici qu'on les intégrera.
+    def _policy_placeholder(self, capteurs: list[list[Pixel]], contexte: ContexteDecision) -> Optional[str]:
+        # placeholder ultra-simple (mais total) : toujours une action
         return ACTIONS_PAR_DEFAUT[0]

@@ -219,13 +219,6 @@ def _resume_observation(obs: Any) -> str:
                 lignes.append(str(ln))
         return "\n".join(lignes)
 
-    except Exception:
-        # Fallback robuste : ne jamais casser l'UI à cause du rendu des stats.
-        try:
-            return str(obs)
-        except Exception:
-            return "<observation>"
-
 
 class DialogueAllerEpisode(ModalScreen[int | None]):
     """Petit dialogue pour saisir un numéro d'épisode (mode replay)."""

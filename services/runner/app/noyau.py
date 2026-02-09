@@ -120,6 +120,8 @@ def executer_episodes_headless(
             )
 
             action = agent.choisir_action(capteurs, ctx)
+            if action is None:
+                raise RuntimeError(f"agent a retourné None: {type(agent).__module__}.{type(agent).__name__}")
 
             z_avant = ""
             z_apres = ""
