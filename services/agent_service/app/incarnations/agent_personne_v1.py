@@ -22,7 +22,7 @@ class SortiesTetes:
 
 
 class AgentPersonneV1(IAgentArene):
-    """Incarnation runtime d'un AgentPersonne (artefact SAI-E107) pour SAI-A108.
+    """Incarnation runtime d'un ArtefactAgentPersonne (artefact SAI-E107) pour SAI-A108.
 
     Rupture : l'agent consomme maintenant les *observations instrumentées* via
     `ContexteDecision.observations`.

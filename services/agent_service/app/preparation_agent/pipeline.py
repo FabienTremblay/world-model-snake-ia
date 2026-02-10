@@ -3,14 +3,14 @@ from __future__ import annotations
 from dataclasses import replace
 
 from .assembleur import assembler_agent_personne
-from .contrats import AgentPersonne, CatalogueDeTetes, PlanPreparationAgent, RapportEntrainement
+from .contrats import ArtefactAgentPersonne, CatalogueDeTetes, PlanPreparationAgent, RapportEntrainement
 from .entrainement import entrainer_agent_personne
 
 
 def preparer_agent_personne(
     plan: PlanPreparationAgent,
     catalogue: CatalogueDeTetes,
-) -> tuple[AgentPersonne, RapportEntrainement]:
+) -> tuple[ArtefactAgentPersonne, RapportEntrainement]:
     """
     pipeline haut niveau sai-a107 :
     1) assembler (tronc + têtes)

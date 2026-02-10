@@ -3,13 +3,13 @@ from __future__ import annotations
 import time
 from dataclasses import replace
 
-from .contrats import AgentPersonne, PlanPreparationAgent, RapportEntrainement
+from .contrats import ArtefactAgentPersonne, PlanPreparationAgent, RapportEntrainement
 
 
 def entrainer_agent_personne(
     plan: PlanPreparationAgent,
-    agent: AgentPersonne,
-) -> tuple[AgentPersonne, RapportEntrainement]:
+    agent: ArtefactAgentPersonne,
+) -> tuple[ArtefactAgentPersonne, RapportEntrainement]:
     """
     squelette d'entraînement.
 

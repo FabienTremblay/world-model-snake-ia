@@ -3,13 +3,13 @@ from __future__ import annotations
 import time
 from dataclasses import replace
 
-from .contrats import AgentPersonne, CatalogueDeTetes, PlanPreparationAgent, SpecTete
+from .contrats import ArtefactAgentPersonne, CatalogueDeTetes, PlanPreparationAgent, SpecTete
 
 
 def assembler_agent_personne(
     plan: PlanPreparationAgent,
     catalogue: CatalogueDeTetes,
-) -> AgentPersonne:
+) -> ArtefactAgentPersonne:
     """
     assemble un agent-personne :
     - sélectionne les têtes
@@ -34,7 +34,7 @@ def assembler_agent_personne(
     if inconnues:
         gouvernance["notes"].append(f"têtes inconnues ignorées: {inconnues}")
 
-    agent = AgentPersonne(
+    agent = ArtefactAgentPersonne(
         genere_ts_ns=time.time_ns(),
         experience=plan.experience,
         arene_id=plan.arene_id,

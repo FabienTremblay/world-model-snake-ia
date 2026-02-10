@@ -5,7 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Type, TypeVar
 
-from .contrats import AgentPersonne, CatalogueDeTetes, RapportEntrainement, PlanPreparationAgent
+from .contrats import ArtefactAgentPersonne, CatalogueDeTetes, RapportEntrainement, PlanPreparationAgent
 
 
 T = TypeVar("T")
@@ -40,13 +40,13 @@ def charger_plan(path: str) -> PlanPreparationAgent:
     return PlanPreparationAgent(**d)
 
 
-def sauvegarder_agent_personne(path: str, agent: AgentPersonne) -> None:
+def sauvegarder_agent_personne(path: str, agent: ArtefactAgentPersonne) -> None:
     _ecrire_json(Path(path), asdict(agent))
 
 
-def charger_agent_personne(path: str) -> AgentPersonne:
+def charger_agent_personne(path: str) -> ArtefactAgentPersonne:
     d = _lire_json(Path(path))
-    return AgentPersonne(**d)
+    return ArtefactAgentPersonne(**d)
 
 
 def sauvegarder_rapport(path: str, rapport: RapportEntrainement) -> None:

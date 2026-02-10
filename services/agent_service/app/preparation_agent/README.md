@@ -18,7 +18,7 @@ fournir une orchestration reproductible (bac-à-sable) pour :
 
 - logique **métier** (offline) : `agent_service.app.preparation_agent.*`
 - orchestration **ui** : `ui_cli.app.preparation_agent.*`
-- exécution en arène (tick → action) : `agent_service.app.agent_runtime.*` (hors scope ici)
+- exécution en arène (tick → action) : `agent_service.app.agents.*` + `runner` (hors scope ici)
 
 ---
 

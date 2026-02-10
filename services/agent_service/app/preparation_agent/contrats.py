@@ -100,7 +100,7 @@ class PlanPreparationAgent:
 
 
 @dataclass(frozen=True)
-class AgentPersonne:
+class ArtefactAgentPersonne:
     """
     artefact produit par sai-a107.
 
