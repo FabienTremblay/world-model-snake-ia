@@ -67,7 +67,23 @@ Cet agent :
 - observe, agrège, infère et qualifie le savoir.
 
 ---
+### 2.3 Projection perceptive et point de vue des agents
 
+Le système supporte deux types de projections perceptives, selon le rôle de l’agent :
+
+- **Projection absolue (vue estrade)**  
+  Utilisée par les agents épistémiques et les observateurs.  
+  La perception est indépendante de l’orientation de l’agent.  
+  Elle permet l’analyse globale, la modélisation du monde et l’apprentissage hors-sol.
+
+- **Projection orientée / égocentrée (vue incarnée)**  
+  Utilisée par les agents en arène.  
+  La perception dépend de la direction courante de l’agent.  
+  Les actions d’observation (gauche/droite/avant) modifient effectivement les capteurs perçus.
+
+Ces deux projections coexistent et sont un **choix explicite de pipeline perceptif**, non un artefact d’interface.
+
+---
 ## 3. Axes conceptuels distincts (à ne pas mélanger)
 
 Pour éviter toute confusion, trois axes sont distingués :

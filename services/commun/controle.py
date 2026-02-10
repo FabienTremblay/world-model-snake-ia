@@ -70,7 +70,12 @@ class ControleExecution:
             self._delai_s = max(0.0, min(1.0, self._delai_s + delta_s))
 
     def demander_reset(self) -> None:
+        # Le runner peut être bloqué dans attendre_autorisation() (pause).
+        # On réveille donc l'attente de step afin que le reset soit appliqué
+        # immédiatement (sinon l'UI donne l'impression que 'r' ne fonctionne
+        # qu'"plus tard").
         self._reset.set()
+        self._step.set()
 
     def consommer_reset(self) -> bool:
         """
@@ -124,6 +129,10 @@ class ControleExecution:
         """Demande de basculer le replay vers un épisode (episode_id)."""
         with self._episode_lock:
             self._episode_demande = int(episode_id)
+        # Même logique que demander_reset(): si le runner est bloqué en pause
+        # en attendant un step, on doit le réveiller pour qu'il consomme la
+        # demande d'épisode sans délai.
+        self._step.set()
 
     def consommer_episode(self) -> Optional[int]:
         """Retourne l'episode_id demandé et le consomme."""

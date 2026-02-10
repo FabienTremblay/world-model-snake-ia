@@ -35,8 +35,16 @@ class ContexteDecision:
     largeur: int
     hauteur: int
 
+    # direction absolue courante du serpent dans le monde réel ("haut"|"bas"|"gauche"|"droite").
+    # utile quand on sépare tourner vs se déplacer.
+    direction: str | None = None
+
     # optionnel : perception propre à l'agent (Cours 4)
     perception: ContextePerception | None = None
+
+    # optionnel : direction courante du monde au tick courant (avant l'action)
+    # valeurs attendues : "haut" | "bas" | "gauche" | "droite" (selon le monde)
+    direction: str | None = None
 
 
 class IAgent(Protocol):

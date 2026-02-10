@@ -63,6 +63,15 @@ Si l'agent expose `get_sorties_tetes()`, le champ `sorties_tetes` est ajouté au
 
 ## agent_personne (A107/A108)
 
+
+### actions supportées (monde snake)
+
+- `avant` : avance dans la direction actuelle
+- `haut|bas|gauche|droite` : direction absolue (comme avant)
+- `observer_gauche` / `observer_droite` : **tourne** à gauche/droite **sans se déplacer** (utile pour séparer observation et mouvement)
+
+`agent_personne` utilise maintenant `observer_gauche/observer_droite` quand l'avant est dangereux, puis `avant` au tick suivant.
+
 ### exécuter un agent-personne par id
 
 L'agent-personne est un artefact produit par le pipeline de préparation (A107) :

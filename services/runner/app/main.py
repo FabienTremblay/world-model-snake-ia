@@ -199,6 +199,7 @@ def boucle_episodes(
                     largeur=cfg.largeur,
                     hauteur=cfg.hauteur,
                     perception=perception,
+                    direction=getattr(monde, "direction", None),
                 )
                 direction = agent.choisir_action(capteurs=capteurs, contexte=contexte)
                 monde.step(direction=direction)

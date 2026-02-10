@@ -116,6 +116,7 @@ def executer_episodes_headless(
                 tick=monde.tick,
                 largeur=cfg.largeur,
                 hauteur=cfg.hauteur,
+                direction=getattr(monde, "direction", None),
                 perception=perception,
             )
 

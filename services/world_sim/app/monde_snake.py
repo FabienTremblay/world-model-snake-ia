@@ -118,6 +118,18 @@ class MondeSnake:
             ("droite", "gauche"),
         }
 
+    def _tourner_rel(self, direction_courante: str, sens: str) -> str:
+        """Tourner à gauche/droite relativement à la direction courante."""
+        ordre = ["haut", "droite", "bas", "gauche"]
+        if direction_courante not in ordre:
+            return direction_courante
+        i = ordre.index(direction_courante)
+        if sens == "gauche":
+            return ordre[(i - 1) % len(ordre)]
+        if sens == "droite":
+            return ordre[(i + 1) % len(ordre)]
+        return direction_courante
+
     def step(self, direction: str | None = None) -> None:
         """
         Applique une action (direction) et fait évoluer l'état interne.
@@ -128,10 +140,40 @@ class MondeSnake:
         self.tick += 1
         self.reward_total += float(self.config.epsilon_par_pas)
 
-        # appliquer la direction si valide (pas de demi-tour)
-        if direction is not None and direction in {"haut", "bas", "gauche", "droite"}:
-            if not self._direction_opposée(direction, self.direction):
-                self.direction = direction
+        # --- interprétation de l'action ---
+        # Contrat (docs/CONTRAT_EXECUTION.md):
+        # - tick 0 (snapshot) est journalisé sans action; la simulation n'a pas à "deviner".
+        # - le déplacement n'est tenté que si action == "avant" (ou alias compat).
+        # - "observer_gauche"/"observer_droite" : tourner relatif SANS déplacement.
+        # - robustesse: une action inconnue ne doit pas provoquer de crash; par défaut, no-op.
+        action = direction
+
+        # Par défaut: aucune tentative de déplacement (évite toute inférence implicite).
+        avance = False
+
+        if action in {"avant", "avancer"}:
+            # avancer dans la direction courante
+            avance = True
+        elif action in {"observer_gauche", "observer_droite", "tourner_gauche", "tourner_droite"}:
+            sens = "gauche" if str(action).endswith("gauche") else "droite"
+            self.direction = self._tourner_rel(self.direction, sens)
+            avance = False
+        elif action in {"gauche", "droite"}:
+            # legacy: tourner + avancer
+            self.direction = self._tourner_rel(self.direction, str(action))
+            avance = True
+        elif action in {"haut", "bas", "gauche", "droite"}:
+            # compat: direction absolue (pas de demi-tour), puis avancer
+            a = str(action)
+            if not self._direction_opposée(a, self.direction):
+                self.direction = a
+            avance = True
+        else:
+            # action inconnue / None => no-op
+            avance = False
+
+        if not avance:
+            return
 
         dx, dy = self._delta(self.direction)
         tete_x, tete_y = self.serpent[-1]

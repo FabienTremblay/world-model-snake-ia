@@ -1,26 +1,58 @@
+# services/runner/app/replay_api.py
+from __future__ import annotations
 
-from typing import Iterable, Dict, Any, Iterator
-from .replay_index import indexer_episodes
+from dataclasses import dataclass
+from typing import Any, Dict, Iterable, Iterator, Optional
 
+from runner.app.replay_index import StatEpisode, indexer_episodes
+
+
+@dataclass
 class Replay:
-    def __init__(self, journal_lignes: Iterable[dict]):
-        self._lignes = list(journal_lignes)
-        self._index = indexer_episodes(self._lignes)
-        self._episode_id = None
-        self._cursor = 0
+    """
+    API de lecture d'un journal jsonl d'épisodes.
 
-    def episodes(self) -> Dict[int, dict]:
+    Entrée: itérable de dicts (événements), typiquement issu d'un jsonl.
+    Usage:
+        rep = Replay(lignes)
+        episodes = rep.episodes()
+        rep.charger_episode(episode_id)
+        for evt in rep.ticks():
+            ...
+    """
+
+    lignes: list[dict[str, Any]]
+    run_id: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        self._index: Optional[Dict[int, StatEpisode]] = None
+        self._episode_id: Optional[int] = None
+
+    def episodes(self) -> Dict[int, StatEpisode]:
+        if self._index is None:
+            self._index = indexer_episodes(self.lignes, run_id=self.run_id)
         return self._index
 
-    def charger_episode(self, episode_id: int) -> None:
-        if episode_id not in self._index:
-            raise KeyError(f"episode {episode_id} absent")
-        self._episode_id = episode_id
-        self._cursor = 0
+    def max_episode(self) -> int:
+        eps = self.episodes()
+        return max(eps.keys()) if eps else 0
 
-    def ticks(self) -> Iterator[dict]:
+    def charger_episode(self, episode_id: int) -> None:
+        self._episode_id = int(episode_id)
+
+    def ticks(self) -> Iterator[dict[str, Any]]:
         if self._episode_id is None:
-            raise RuntimeError("episode non chargé")
-        for row in self._lignes:
-            if int(row.get("episode_id", -1)) == self._episode_id:
-                yield row
+            # défaut: premier épisode
+            eps = self.episodes()
+            self._episode_id = sorted(eps.keys())[0] if eps else 0
+
+        eid = int(self._episode_id)
+        for evt in self.lignes:
+            try:
+                if int(evt.get("episode_id", 0)) != eid:
+                    continue
+            except Exception:
+                continue
+            if self.run_id is not None and str(evt.get("run_id", "")) != str(self.run_id):
+                continue
+            yield evt
