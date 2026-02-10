@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, Any
 
 from commun.contrats import Pixel
 
@@ -17,7 +17,6 @@ class ContextePerception:
     Ce contexte est volontairement minimal et extensible.
     """
 
-    # conventions de départ (extensibles)
     champ_vision_deg: int = 180
     rayon_vision: int = 0  # 0 = "autour immédiat" (via capteurs), >0 = vision à distance
     voit: bool = True
@@ -36,29 +35,22 @@ class ContexteDecision:
     hauteur: int
 
     # direction absolue courante du serpent dans le monde réel ("haut"|"bas"|"gauche"|"droite").
-    # utile quand on sépare tourner vs se déplacer.
     direction: str | None = None
 
     # optionnel : perception propre à l'agent (Cours 4)
     perception: ContextePerception | None = None
 
-    # optionnel : direction courante du monde au tick courant (avant l'action)
-    # valeurs attendues : "haut" | "bas" | "gauche" | "droite" (selon le monde)
-    direction: str | None = None
+    # observations produites par les instruments (caméra, gps, radio, etc.)
+    # forme : dict instrument_id -> observation (payload + meta)
+    observations: dict[str, Any] | None = None
 
 
 class IAgent(Protocol):
-    """Contrat minimal d'un agent.
-
-    L'agent choisit une direction à partir des capteurs (observation).
-    Il peut conserver un état interne (mémoire) s'il le souhaite.
-    """
+    """Contrat minimal d'un agent."""
 
     def choisir_action(self, capteurs: list[list[Pixel]], contexte: ContexteDecision) -> str:
         ...
 
-
-# --- Extensions Cours 5 (non destructives) ---
 
 class AgentEnArene(IAgent, Protocol):
     """Alias explicite : agent incarné, point de vue local, action directe."""
@@ -67,11 +59,7 @@ class AgentEnArene(IAgent, Protocol):
 
 @dataclass(frozen=True)
 class TraceDecision:
-    """Trace minimale optionnelle pour expliquer une décision (cours 5).
-
-    Un agent *peut* fournir une trace. L'orchestrateur (ui_cli) peut l'écrire dans
-    le journal pour alimenter l'analyse et l'épistémique sans couplage fort.
-    """
+    """Trace minimale optionnelle pour expliquer une décision (cours 5)."""
 
     action_choisie: str
     raisons: list[str] | None = None

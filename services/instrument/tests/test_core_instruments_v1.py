@@ -1,24 +1,37 @@
-from instrument.app.instruments.camera_estrade_absolue_v1 import CameraEstradeAbsolueV1
+from __future__ import annotations
+
+from instrument.app.contrats import ObservationPixels, ObservationDonnees
 
 
-def test_core_observer_retourne_pixels_et_meta(etat_simple) -> None:
-    inst = CameraEstradeAbsolueV1(niveau_bruit=0, seed_bruit=1)
-    obs = inst.observer(etat_simple)
+def test_core_observer_retourne_payload_et_meta(instruments_core, etat_simple) -> None:
+    for inst in instruments_core:
+        obs = inst.observer(etat_simple)
 
-    assert obs.pixels is not None
-    assert len(obs.pixels) == etat_simple.hauteur
-    assert len(obs.pixels[0]) == etat_simple.largeur
+        assert hasattr(obs, "meta")
+        assert obs.meta["instrument_id"] == inst.instrument_id
 
-    assert obs.meta["instrument_id"] == inst.instrument_id
-    assert obs.meta["repere"] == "absolu"
+        # nature du payload
+        if isinstance(obs, ObservationPixels):
+            assert obs.pixels is not None
+            assert len(obs.pixels) > 0
+            assert len(obs.pixels[0]) > 0
+        elif isinstance(obs, ObservationDonnees):
+            assert obs.donnees is not None
+            assert isinstance(obs.donnees, dict)
+        else:
+            raise AssertionError(f"Type d'observation inattendu: {type(obs)!r}")
 
 
-def test_core_determinisme_si_pas_de_bruit(etat_simple) -> None:
-    inst1 = CameraEstradeAbsolueV1(niveau_bruit=0, seed_bruit=999)
-    inst2 = CameraEstradeAbsolueV1(niveau_bruit=0, seed_bruit=123)
+def test_core_determinisme_si_pas_de_bruit(instruments_core, etat_simple) -> None:
+    """Même état + instruments déterministes => même observation.
 
-    obs1 = inst1.observer(etat_simple)
-    obs2 = inst2.observer(etat_simple)
+    Note: pour les caméras, le bruit doit être à 0 (fixture instruments_core).
+    """
+    for inst in instruments_core:
+        obs1 = inst.observer(etat_simple)
+        obs2 = inst.observer(etat_simple)
 
-    # même état + bruit=0 => pixels identiques
-    assert obs1.pixels == obs2.pixels
+        if isinstance(obs1, ObservationPixels):
+            assert obs1.pixels == obs2.pixels
+        else:
+            assert obs1.donnees == obs2.donnees

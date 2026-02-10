@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 from commun.bus import BusEtatMemoire
 from commun.controle import ControleExecution
@@ -14,6 +15,9 @@ from world_sim.app.arenes_yaml import charger_arene_v0
 from runner.app.journal import JournalEpisodes
 
 from agent_service.app.agent_runtime.agents_in_arene.contrats import ContexteDecision, ContextePerception, IAgent
+
+from instrument.app.contrats import EtatMondeCanonique, ObservationInstrument
+from instrument.app.instruments import CameraEstradeAbsolueV1, InstrumentGPSV1
 
 
 def _mesurer_bruit(capteurs_canon, capteurs):
@@ -38,20 +42,7 @@ def _mesurer_bruit(capteurs_canon, capteurs):
 
 
 def _fabriquer_agent_depuis_env() -> IAgent | None:
-    """Option TUI : si SNAKE_AGENT est défini, on joue en mode auto.
-
-    Exemples :
-      - SNAKE_AGENT=aleatoire
-      - SNAKE_AGENT=curiosite_tabulaire
-      - SNAKE_AGENT=planif_mpc_tabulaire
-      - SNAKE_AGENT=planif_mpc_observateur_tabulaire
-      - SNAKE_AGENT=planif_1pas_temperament
-
-    Paramètres :
-      - SNAKE_AGENT_SEED (int)
-      - SNAKE_AGENT_EPSILON (float)
-      - SNAKE_AGENT_LATENT (str, ex: checksum, signaux_percus_hash_v1)
-    """
+    """Option TUI : si SNAKE_AGENT est défini, on joue en mode auto."""
     nom = os.getenv("SNAKE_AGENT", "").strip().lower()
     if not nom:
         return None
@@ -69,7 +60,6 @@ def _fabriquer_agent_depuis_env() -> IAgent | None:
         return AgentAleatoire(seed=seed_int, epsilon=float(epsilon))
 
     if nom == "curiosite_tabulaire":
-        # paramètres de curiosité définis dans le module historique (cours 4)
         from agent_service.app.agents.agent_curiosite_tabulaire import ParametresCuriosite
         from agent_service.app.agent_runtime.agents_in_arene import AgentCuriositeTabulaire
 
@@ -105,15 +95,60 @@ def _fabriquer_agent_depuis_env() -> IAgent | None:
     raise SystemExit(f"SNAKE_AGENT inconnu: {nom!r}")
 
 
+def _etat_canonique_depuis_monde(monde: MondeSnake, cfg: ConfigMonde) -> EtatMondeCanonique:
+    """Construit l'état canonique pour alimenter des instruments.
+
+    - monde.serpent: liste (x,y) corps...tête (tête = dernier)
+    - monde.direction: direction absolue courante
+    """
+    return EtatMondeCanonique(
+        largeur=cfg.largeur,
+        hauteur=cfg.hauteur,
+        serpent=list(getattr(monde, "serpent", [])),
+        direction=getattr(monde, "direction", None),
+        nourritures=set(getattr(monde, "nourriture", [])) if hasattr(monde, "nourriture") else set(),
+        porte=getattr(monde, "porte_pos", None),
+        porte_ouverte=bool(getattr(monde, "porte_ouverte", False)),
+        palette=cfg.palette,
+    )
+
+
+def _instruments_depuis_agent(agent: IAgent | None):
+    """Retourne la liste des instruments 'portés' par l'agent.
+
+    Convention:
+      - si l'agent expose une méthode `instruments()` => on l'utilise.
+      - sinon, fallback minimal (utile en mode manuel ou agents legacy).
+    """
+    if agent is not None:
+        fn = getattr(agent, "instruments", None)
+        if callable(fn):
+            insts = fn()
+            if insts is not None:
+                return list(insts)
+
+    # fallback minimal : caméra estrade + gps (données)
+    return [
+        CameraEstradeAbsolueV1(niveau_bruit=0, seed_bruit=1),
+        InstrumentGPSV1(),
+    ]
+
+
+def _observer_instruments(insts, etat: EtatMondeCanonique) -> dict[str, ObservationInstrument]:
+    sorties: dict[str, ObservationInstrument] = {}
+    for inst in insts:
+        obs = inst.observer(etat)
+        sorties[getattr(inst, "instrument_id", inst.__class__.__name__)] = obs
+    return sorties
+
+
 def boucle_episodes(
     bus: BusEtatMemoire,
     controle: ControleExecution,
     ticks_max: int = 10_000,
 ) -> None:
-    # root projet = 3 niveaux au-dessus de services/runner/app
     racine_projet = Path(__file__).resolve().parents[3]
 
-    # arène (donnée)
     arene_id = os.getenv("SNAKE_ARENE", "demo_v0").strip()
     path_arene = racine_projet / "donnees" / "config" / "arenes" / f"{arene_id}.yml"
     ar = charger_arene_v0(path_arene)
@@ -132,12 +167,12 @@ def boucle_episodes(
         palette=ar.palette,
     )
 
-    # journal (optionnel)
     journal = JournalEpisodes(racine_projet)
 
-    # agent auto (optionnel) — sinon mode manuel (direction via TUI)
     agent = _fabriquer_agent_depuis_env()
     perception = ContextePerception(champ_vision_deg=180)
+
+    insts = _instruments_depuis_agent(agent)
 
     run_id = time.strftime("%Y%m%d_%H%M%S")
     episode_id = 0
@@ -147,6 +182,9 @@ def boucle_episodes(
         monde.reset()
         niveau_bruit = controle.niveau_bruit()
         capteurs, rendu_debug = monde.observer(niveau_bruit=niveau_bruit)
+
+        etat = _etat_canonique_depuis_monde(monde, cfg)
+        observations = _observer_instruments(insts, etat)
 
         bus.publier(
             Observation(
@@ -187,11 +225,9 @@ def boucle_episodes(
                 break
 
             if agent is None:
-                # mode assisté: direction 1-shot si fournie par le TUI
                 direction = controle.consommer_direction()
                 monde.step(direction=direction)
             else:
-                # mode auto: l'agent décide depuis l'observation courante
                 contexte = ContexteDecision(
                     run_id=run_id,
                     episode_id=episode_id,
@@ -200,6 +236,7 @@ def boucle_episodes(
                     hauteur=cfg.hauteur,
                     perception=perception,
                     direction=getattr(monde, "direction", None),
+                    observations=observations,
                 )
                 direction = agent.choisir_action(capteurs=capteurs, contexte=contexte)
                 monde.step(direction=direction)
@@ -208,6 +245,9 @@ def boucle_episodes(
             capteurs, rendu_debug = monde.observer(niveau_bruit=niveau_bruit)
             capteurs_canon, _ = monde.observer(niveau_bruit=0)
             mesure_bruit = _mesurer_bruit(capteurs_canon, capteurs)
+
+            etat = _etat_canonique_depuis_monde(monde, cfg)
+            observations = _observer_instruments(insts, etat)
 
             bus.publier(
                 Observation(
@@ -245,7 +285,6 @@ def boucle_episodes(
                     time.sleep(0.05)
                 break
 
-            # cadence UI
             time.sleep(controle.delai_s())
 
         episode_id += 1

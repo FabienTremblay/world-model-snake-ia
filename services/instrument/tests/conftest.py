@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from instrument.app.contrats import EtatMondeCanonique
-from instrument.app.instruments import CameraEstradeAbsolueV1, CameraEgocentreeV1
+from instrument.app.instruments import CameraEstradeAbsolueV1, CameraEgocentreeV1, InstrumentGPSV1
 from world_sim.app.arenes_yaml import PALETTE_DEFAUT
 
 
@@ -24,8 +24,9 @@ def etat_simple() -> EtatMondeCanonique:
 
 @pytest.fixture()
 def instruments_core():
-    # Tous les instruments doivent respecter le CORE (forme, déterminisme sans bruit).
+    # Tous les instruments doivent respecter le CORE (forme, déterminisme sans bruit si applicable).
     return [
         CameraEstradeAbsolueV1(niveau_bruit=0, seed_bruit=1),
         CameraEgocentreeV1(rayon=2, niveau_bruit=0, seed_bruit=1),
+        InstrumentGPSV1(),
     ]
