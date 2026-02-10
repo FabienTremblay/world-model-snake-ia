@@ -12,7 +12,7 @@ from commun.contrats import Observation
 
 from world_sim.app.monde_snake import ConfigMonde, MondeSnake
 from world_sim.app.arenes_yaml import charger_arene_v0
-from runner.app.journal import JournalEpisodes
+from runner.app.journal_v2 import JournalV2Writer
 
 from agent_service.app.catalogue_agents import creer_agent
 from agent_service.app.contrats_agents import ContexteDecision, ContextePerception, IAgentArene
@@ -152,14 +152,40 @@ def boucle_episodes(
         palette=ar.palette,
     )
 
-    journal = JournalEpisodes(racine_projet)
+    # Journal v2 (sans compat v1) : 1 répertoire par run, meta.json + journal.jsonl.
+    run_id = time.strftime("%Y%m%d_%H%M%S")
+    meta = {
+        "run": {
+            "run_id": run_id,
+            "arene_id": ar.id,
+            "seed": ar.seed,
+        },
+        "bac_a_sable": {
+            "arene": {
+                "id": ar.id,
+                "source_yml": (path_arene.read_text(encoding="utf-8") if path_arene.exists() else None),
+                "config_resolue": ar.__dict__,
+            },
+            "cfg_monde": cfg.__dict__,
+        },
+        "env": {
+            "SNAKE_ARENE": os.getenv("SNAKE_ARENE"),
+            "SNAKE_AGENT": os.getenv("SNAKE_AGENT"),
+            "SNAKE_AGENT_SEED": os.getenv("SNAKE_AGENT_SEED"),
+            "SNAKE_AGENT_EPSILON": os.getenv("SNAKE_AGENT_EPSILON"),
+            "SNAKE_AGENT_LATENT": os.getenv("SNAKE_AGENT_LATENT"),
+        },
+    }
+    journal = JournalV2Writer(racine_projet, run_id=run_id, meta=meta)
 
     agent = _fabriquer_agent_depuis_env()
     perception = ContextePerception(champ_vision_deg=180)
 
     insts = _instruments_depuis_agent(agent)
 
-    run_id = time.strftime("%Y%m%d_%H%M%S")
+    # Identité logique de l'agent (utile aux analyses).
+    agent_id = os.getenv("SNAKE_AGENT", "manuel").strip() or "manuel"
+    incarnation_id = None
     episode_id = 0
 
     while True:
@@ -186,18 +212,20 @@ def boucle_episodes(
             )
         )
         journal.ecrire_tick(
-            run_id=run_id,
             episode_id=episode_id,
             tick=monde.tick,
             arene_id=cfg.arene_id,
             seed=cfg.seed,
-            action_direction=None,
+            agent_id=agent_id,
+            incarnation_id=incarnation_id,
+            action=None,
             niveau_bruit=niveau_bruit,
+            etat=etat,
             score=monde.score,
             longueur=len(monde.serpent),
             termine=monde.termine,
             raison_fin=monde.raison_fin,
-            capteurs=capteurs,
+            observations=observations,
         )
 
         for _ in range(ticks_max):
@@ -249,18 +277,20 @@ def boucle_episodes(
                 )
             )
             journal.ecrire_tick(
-                run_id=run_id,
                 episode_id=episode_id,
                 tick=monde.tick,
                 arene_id=cfg.arene_id,
                 seed=cfg.seed,
-                action_direction=direction,
+                agent_id=agent_id,
+                incarnation_id=incarnation_id,
+                action=direction,
                 niveau_bruit=niveau_bruit,
+                etat=etat,
                 score=monde.score,
                 longueur=len(monde.serpent),
                 termine=monde.termine,
                 raison_fin=monde.raison_fin,
-                capteurs=capteurs,
+                observations=observations,
             )
 
             if monde.termine:

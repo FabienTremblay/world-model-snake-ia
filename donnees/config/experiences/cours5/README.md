@@ -17,7 +17,7 @@ donnees/config/experiences/<experience_id>/
   artefacts/
     runs/
       <run_id>/
-        journal_episodes.jsonl
+        journal.jsonl
         stdout.log
         meta.json
         metrics.jsonl   # optionnel
@@ -43,7 +43,7 @@ PYTHONPATH=services python -m ui_cli.app.main \
 
 - résout `donnees/config/experiences/cours5/`
 - crée `artefacts/runs/<run_id>/`
-- écrit par défaut le journal dans `journal_episodes.jsonl`
+- écrit par défaut le journal dans `journal.jsonl`
 - si `--capture-stdout` : écrit aussi `stdout.log`
 - écrit `meta.json` (paramètres résolus)
 
@@ -66,9 +66,9 @@ ences/cle_ou_nom_experience/
   artefacts/
     runs/
       <run_id>/
-        journal_episodes.jsonl
+        journal.jsonl
         stdout.log
-        meta_run.json
+        meta.json
         metrics.jsonl
 ```
 
@@ -92,9 +92,9 @@ Effets :
 
 - crée `donnees/config/experiences/cours5/` s'il n'existe pas
 - crée un nouveau `artefacts/runs/<run_id>/`
-- écrit par défaut le journal dans `journal_episodes.jsonl`
+- écrit par défaut le journal dans `journal.jsonl`
 - si `--capture-stdout` est activé, écrit aussi `stdout.log`
-- écrit `meta_run.json` (paramètres résolus)
+- écrit `meta.json` (paramètres résolus)
 
 ## Structure de `experience.yml`
 
@@ -122,7 +122,7 @@ defauts:
 
 - **Reproductibilité** : chaque run est isolé
 - **Lisibilité** : on n'a plus un répertoire `artefacts/` global qui mélange tout
-- **Traçabilité** : `meta_run.json` reconstitue l'exécution
+- **Traçabilité** : `meta.json` reconstitue l'exécution
 
 ## Nettoyage / archivage
 
@@ -177,11 +177,11 @@ defauts:
 
 ## Artefacts produits
 
-- `journal_episodes.jsonl` : événements tick-by-tick (entrée principale pour les scripts de diagnostic / recodage)
+- `journal.jsonl` : événements tick-by-tick (entrée principale pour les scripts de diagnostic / recodage)
 - `metrics.jsonl` : métriques agrégées (si activé)
 - `stdout.log` : sortie de run (si `--capture-stdout`)
-- `meta_run.json` : paramètres résolus (utile pour reproduire)
-6. écrit un `meta_run.json` (paramètres effectifs)
+- `meta.json` : paramètres résolus (utile pour reproduire)
+6. écrit un `meta.json` (paramètres effectifs)
 
 ### Options ajoutées
 
@@ -211,10 +211,10 @@ Quand on fera évoluer l'architecture, on pourra faire en sorte que `ui_cli` cha
 
 ## Artefacts produits
 
-- `journal_episodes.jsonl` : un événement JSON par tick
+- `journal.jsonl` : un événement JSON par tick
 - `metrics.jsonl` : métriques optionnelles (si `--metrics` ou créé via bac à sable)
 - `stdout.log` : sortie console capturée (si `--capture-stdout`)
-- `meta_run.json` : paramètres et chemins résolus
+- `meta.json` : paramètres et chemins résolus
  moment :
 
 - `experience_id` : identifiant (informatif)
@@ -229,4 +229,4 @@ Le `ui_cli` ne consomme pas encore ces valeurs pour surcharger automatiquement l
 
 - Un run = un répertoire. Ne réutilise pas le même run pour “corriger” une expérience : relance et compare.
 - Donne un `--run-tag` lorsque tu fais des variantes (ex. `murfix`, `signauxhash`, `trainmix`).
-- Garde le `meta_run.json` : c'est ce qui te permet d'expliquer les stdout dans tes schémas.
+- Garde le `meta.json` : c'est ce qui te permet d'expliquer les stdout dans tes schémas.

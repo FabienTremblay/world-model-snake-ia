@@ -23,7 +23,7 @@ parametres:
 # Organisation des sorties sous donnees/config/experiences/<id>/artefacts/
 artefacts:
   runs_dir: artefacts/runs
-  journal_basename: journal_episodes.jsonl
+  journal_basename: journal.jsonl
   stdout_basename: stdout.log
   meta_basename: meta.json
 # s'il n'existe pas encore, mais ne devine pas vos choix : vous les fixez ici.
@@ -47,7 +47,7 @@ defauts:
 #   artefacts/
 #     runs/
 #       <run_id>/
-#         journal_episodes.jsonl
+#         journal.jsonl
 #         stdout.log
 #         meta.json
 #         metrics.jsonl (optionnel)

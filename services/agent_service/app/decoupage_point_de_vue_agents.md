@@ -119,20 +119,15 @@ Pour éviter toute confusion, trois axes sont distingués.
   - `camera_estrade_absolue_v1`
   - `camera_egocentree_v1`
 
-### 5.3 `agent_service` (agents en arène)
-- contrats canoniques : `agent_service.app.contrats_agents`
-- catalogue (instanciation centralisée) : `agent_service.app.catalogue_agents`
-- agents en arène : `agent_service.app.agents.*`
-- incarnation d’un agent-personne (sai-a108) : `agent_service.app.incarnations.*`
-
-propriété clé : l’agent **décide** à partir d’observations reçues (instruments).
-l’agent ne reconstruit pas « le monde » : il consomme une observation instrumentée.
+### 5.3 `agent_service.app.agent_runtime`
+- agents en arène : décision à partir des observations reçues
+- l’agent ne reconstruit pas « le monde » : il consomme une observation instrumentée
 
 ---
 
 ## 6. journal d’épisodes (sans compat)
 
-Le journal `journal_episodes.jsonl` doit porter explicitement :
+Le journal `journal.jsonl` doit porter explicitement :
 - l’état canonique,
 - la(les) observation(s) et leur `instrument_id`,
 - le repère (`absolu` / `egocentre`) et les paramètres effectifs.

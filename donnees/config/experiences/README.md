@@ -20,10 +20,11 @@ donnees/config/experiences/
     artefacts/
       runs/
         <run_id>/
-          journal_episodes.jsonl
-          metrics.jsonl
+          journal.jsonl
+          meta.json
           stdout.log
-          meta_run.json
+          metrics.jsonl   # optionnel
+          obs/            # optionnel (payloads lourds, ex. caméra en NPZ)
 ```
 
 ## ui_cli et création automatique
@@ -46,33 +47,6 @@ PYTHONPATH=services python -m ui_cli.app.main \
 ```
 
 > Pour le moment, `experience.yml` est surtout un support de documentation. Une itération ultérieure pourra faire en sorte que le `ui_cli` lise ce fichier et applique automatiquement les défauts.
-ence.yml
-    README.md
-    artefacts/
-  cours4/
-    experience.yml
-    artefacts/
-      runs/
-        <run_id>/
-          journal_episodes.jsonl
-          stdout.log
-          meta_run.json
-          metrics.jsonl
-```
-
-## Création automatique
-
-Le `ui_cli` crée un bac à sable à la volée lorsqu'on lance une expérience inexistante :
-
-```bash
-PYTHONPATH=services python -m ui_cli.app.main --experience cours4 --arene cours4_tiny_planification --agent aleatoire --episodes 10
-```
-
-Cela crée :
-
-- `donnees/config/experiences/cours4/`
-- `donnees/config/experiences/cours4/experience.yml` (template)
-- `donnees/config/experiences/cours4/artefacts/runs/<run_id>/...`
 
 ## Voir le template
 

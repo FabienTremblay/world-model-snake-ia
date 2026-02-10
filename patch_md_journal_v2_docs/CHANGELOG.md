@@ -11,9 +11,7 @@ Ce fichier suit les changements structurants du projet.
 ### modifié
 - `docs/runner.md` : orchestration par instruments + journal `episodes_v2`
 - `services/agent_service/app/decoupage_point_de_vue_agents.md` : état actuel vs cible (égocentré) et introduction du package `instrument`
-
-### supprimé
-- ancien package `agent_runtime` (refonte canonique des types d’agents)
+- `services/agent_service/app/agent_runtime/README.md` et `MIGRATION.md` : alignement sur la cible et mention explicite de l’état actuel
 
 ### notes
-- ce changelog accompagne un tag github créé côté dépôt ; il documente la nouvelle direction (sans compat) pour `journal.jsonl` (schema `journal_v2`).
+- ce changelog accompagne un tag github créé côté dépôt ; il documente la nouvelle direction (sans compat) pour `journal.jsonl` (v2).

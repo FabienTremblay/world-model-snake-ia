@@ -18,7 +18,7 @@ nom: "cours 4 — world model + MPC + observateur + APK"
 # Organisation des sorties sous donnees/config/experiences/<id>/artefacts/
 artefacts:
   runs_dir: artefacts/runs
-  journal_basename: journal_episodes.jsonl
+  journal_basename: journal.jsonl
   stdout_basename: stdout.log
   meta_basename: meta.json
 # s'il n'existe pas encore, mais ne devine pas vos choix : vous les fixez ici.

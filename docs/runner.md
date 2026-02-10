@@ -1,6 +1,6 @@
 # runner
 
-Le **runner** exécute une expérience (arène + agent + règles) et produit un **journal d’épisodes** (`journal_episodes.jsonl`) exploitable pour :
+Le **runner** exécute une expérience (arène + agent + règles) et produit un **journal** (`journal.jsonl`) exploitable pour :
 - diagnostics,
 - relecture (replay),
 - entraînement (world models / agents).
@@ -12,8 +12,8 @@ Le **runner** exécute une expérience (arène + agent + règles) et produit un 
 - charger une expérience (arène, paramètres d’exécution, seed)
 - instancier un agent (selon l’incarnation demandée)
 - exécuter les ticks (boucle principale)
-- produire un journal `journal_episodes.jsonl` (un événement par tick)
-- gérer la sortie des artefacts (stdout.log, résumé, etc.)
+- produire un journal `journal.jsonl` (un événement par tick)
+- gérer la sortie des artefacts (stdout.log, meta.json, etc.)
 
 ## non-responsabilités (ce que le runner ne doit pas faire)
 
@@ -29,40 +29,37 @@ Il doit rester **rigoureux et neutre**.
 
 Dans ce projet, l’agent n’accède pas au monde « directement » : il reçoit une **observation** produite par un **instrument**.
 
-- `world_sim` fournit un **état canonique** du monde (snapshot / état complet nécessaire à la perception).
-- `instrument` transforme cet état canonique en **observation** (ex. caméra estrade absolue, caméra égocentrée orientée).
-- le runner **orchestre** : pour chaque tick, il demande au monde un état canonique, le passe à l’instrument, puis journalise l’observation.
+- `world_sim` fournit un **état canonique** du monde (snapshot complet / rejouable).
+- `instrument` transforme cet état canonique en **observation** (ex. caméra estrade absolue, caméra égocentrée orientée, gps).
+- le runner **orchestre** : à chaque tick, il récupère l’état canonique, passe cet état aux instruments, puis journalise.
 
-> objectif : rendre explicite la chaîne *monde → instrument → observation → agent → action*.
+> objectif : rendre explicite la chaîne *monde → instrument → observation → agent → décision → action*.
 
 ---
 
-## journal d’épisodes : format sans compat (episodes_v2)
+## journal : format sans compat (`journal_v2`)
 
 Le journal n’est pas seulement « l’action + des pixels ». Il doit porter :
-- l’état canonique (ou sa forme minimale),
-- la(les) observation(s) produite(s) par instrument,
-- les métadonnées permettant de comprendre et rejouer.
 
-### structure recommandée d’un tick (v2)
+- l’état canonique (ou sa forme minimale),
+- la décision de l’agent,
+- les observations produites par instrument,
+- les métadonnées permettant de **comprendre** et **rejouer**.
+
+### structure d’un tick (v2)
 
 Champs minimaux :
 
-- `run_id`, `episode_id`, `tick`
-- `action` : action appliquée pour produire le tick observé
-- `etat` : snapshot canonique (largeur/hauteur, positions, direction, objets)
-- `observations` : liste d’observations (une par instrument)
+- `schema` : `journal_v2`
+- `run_id`, `episode_id`, `tick`, `ts_ns`
+- `monde_canonique` : snapshot du monde (largeur/hauteur, serpent, direction, nourritures, porte, score, termine, raison_fin, etc.)
+- `decision` : ce que l’agent renvoie (au minimum `action`)
+- `observations` : dictionnaire `{instrument_id: observation}`
 
-Chaque observation :
+Notes importantes :
 
-- `instrument_id` : ex. `camera_estrade_absolue_v1`, `camera_egocentree_v1`
-- `repere` : `absolu` | `egocentre`
-- `params` : paramètres effectifs (rayon, fov, bruit, etc.)
-- `capteurs_format` : ex. `pixels_b64_v1`
-- `capteurs_compact` : payload compacté (base64)
-- `meta_observation` : optionnel (checksum, stats, etc.)
-
-> ce format casse volontairement la compatibilité : on assume que nous sommes encore en phase de découverte.
+- les observations peuvent être **légères** (ex. gps) ou **lourdes** (ex. caméra). Pour les payloads lourds, le journal peut contenir un pointeur (fichier) plutôt que les pixels inline.
+- ce format casse volontairement la compatibilité : on assume que nous sommes encore en phase de découverte.
 
 ---
 
@@ -79,9 +76,5 @@ Il expose :
 
 ### convention temporelle (action vs tick)
 
-- tick `0` : observation initiale (pas d’action appliquée)
-- tick `t>0` : le journal porte l’action qui a été **appliquée** pour passer du tick `t-1` au tick `t`
-
-Cette convention est indispensable pour :
-- aligner décision (avant `step`) et observation (après `step`)
-- conserver des replays et diagnostics non ambigus
+- l’observation et l’état canonique sont ceux **après** l’application de la décision `decision.action` pour produire le tick `t`.
+- autrement dit : `decision.action` est l’action qui a été appliquée pour arriver à l’état journalisé au tick `t`.

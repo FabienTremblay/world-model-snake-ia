@@ -43,7 +43,7 @@ dernier_run = os.environ.get("DERNIER_RUN")
 if not dernier_run:
     raise SystemExit("DERNIER_RUN manquant")
 
-path = os.path.join(dernier_run, "journal_episodes.jsonl")
+path = os.path.join(dernier_run, "journal.jsonl")
 
 actions = Counter()
 raisons = Counter()
@@ -53,17 +53,20 @@ with open(path, "r", encoding="utf-8") as f:
     for line in f:
         obj = json.loads(line)
         ep = obj.get("episode_id")
-        act = obj.get("action")
+        tick = int(obj.get("tick") or 0)
+
+        act = (obj.get("decision") or {}).get("action")
         actions[str(act)] += 1
 
-        par_episode[ep]["score"] = obj.get("score")
-        par_episode[ep]["longueur"] = obj.get("longueur")
-        par_episode[ep]["ticks"] = max(par_episode[ep]["ticks"], int(obj.get("tick") or 0))
+        monde = obj.get("monde_canonique") or {}
+        par_episode[ep]["score"] = monde.get("score")
+        par_episode[ep]["longueur"] = monde.get("longueur")
+        par_episode[ep]["ticks"] = max(par_episode[ep]["ticks"], tick)
 
-        if obj.get("termine"):
+        if monde.get("termine"):
             par_episode[ep]["termine"] = True
-            par_episode[ep]["raison_fin"] = obj.get("raison_fin")
-            raisons[str(obj.get("raison_fin"))] += 1
+            par_episode[ep]["raison_fin"] = monde.get("raison_fin")
+            raisons[str(monde.get("raison_fin"))] += 1
 
 print("\n=== Résumé A108 ===")
 print(f"Journal: {path}")
@@ -89,7 +92,8 @@ shown = 0
 with open(path, "r", encoding="utf-8") as f:
     for line in f:
         obj = json.loads(line)
-        print(f"  tick={obj.get('tick'):>3}  action={obj.get('action')}")
+        act = (obj.get("decision") or {}).get("action")
+        print(f"  tick={obj.get('tick'):>3}  action={act}")
         shown += 1
         if shown >= 20:
             break

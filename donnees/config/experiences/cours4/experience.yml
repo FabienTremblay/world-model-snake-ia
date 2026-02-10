@@ -27,7 +27,7 @@ generation:
 
 sorties:
   run_dir: artefacts/runs
-  journal: journal_episodes.jsonl
+  journal: journal.jsonl
   capture_stdout: true
 
 notes:
