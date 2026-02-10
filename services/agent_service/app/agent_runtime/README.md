@@ -1,21 +1,18 @@
-# agent_runtime (cours 5)
+# agent_runtime
 
-Ce package introduit une frontière explicite : **agents en arène** (point de vue local)
-vs **agents d'estrade** (épistémique, hors de l'arène).
+Ce package regroupe les agents « cours 5 » et stabilise la frontière entre :
+- agents **en arène** (incarnés),
+- agents **d’estrade** (épistémiques, hors-arène).
 
-## Sous-packages
+## sous-packages
 
-- `agents_in_arene/` : agents qui observent localement (ex. 180°) et agissent.
-- `approches/` : briques de décision (plug-ins) réutilisables par plusieurs agents.
-- `traits/` : traits de tempérament (prudence, curiosité, etc.).
+- `agents_in_arene/` : agents incarnés, qui décident à partir d’une **observation** (produite par un instrument)
+- `approches/` : briques de décision (plug-ins) réutilisables
+- `traits/` : tempéraments et paramètres normatifs (orthogonaux au point de vue)
 
-## Compatibilité / migration
+## note importante (état actuel vs cible)
 
-Les implémentations existantes (cours 4) vivent dans `agent_service.app.agents.*`.
-Pour éviter une rupture brutale, les modules d'`agents_in_arene` peuvent **ré-exporter**
-ou **adapter** ces classes existantes.
+La cible du cours 5 est d’équiper les agents en arène d’une observation **égocentrée orientée**.
 
-Le but du cours 5 est de stabiliser les frontières pour pouvoir :
-- brancher des "tempéraments" de façon orthogonale,
-- introduire des traces explicables par tick,
-- et laisser l'épistémique (estrade) consommer des artefacts sans agir dans l'arène.
+À ce stade du projet, une partie des runs journalisent encore une observation **absolue (estrade)**.
+La séparation nette se fait via un package `instrument` (caméra estrade vs caméra egocentrée) et un journal d’épisodes traçable.

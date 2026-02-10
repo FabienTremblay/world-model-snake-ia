@@ -1,11 +1,14 @@
 # runner
 
-Le **runner** est le composant qui exécute une expérience (arène + agent + règles) et produit un **journal d’épisodes** exploitable pour les diagnostics, la relecture et l’entraînement.
+Le **runner** exécute une expérience (arène + agent + règles) et produit un **journal d’épisodes** (`journal_episodes.jsonl`) exploitable pour :
+- diagnostics,
+- relecture (replay),
+- entraînement (world models / agents).
 
 ---
 
 ## responsabilités (ce que le runner fait)
- 
+
 - charger une expérience (arène, paramètres d’exécution, seed)
 - instancier un agent (selon l’incarnation demandée)
 - exécuter les ticks (boucle principale)
@@ -13,7 +16,8 @@ Le **runner** est le composant qui exécute une expérience (arène + agent + r�
 - gérer la sortie des artefacts (stdout.log, résumé, etc.)
 
 ## non-responsabilités (ce que le runner ne doit pas faire)
-- **ne pas contenir** de logique de jeu (murs, nourriture, fin, score) : c’est l’arène / moteur du monde
+
+- **ne pas contenir** de logique de jeu (murs, nourriture, fin, score) : c’est `world_sim`
 - **ne pas décider** de la stratégie de l’agent : c’est l’agent
 - **ne pas inventer** de métriques ad hoc : ce sont les diagnostics/analyses
 
@@ -21,83 +25,63 @@ Il doit rester **rigoureux et neutre**.
 
 ---
 
-## capteurs et “projection” (absolue vs égocentrée)
-Le runner journalise ce que l’agent “voit” via `capteurs_compact`. Or, **la même scène** peut être projetée de deux façons :
-- **projection absolue** (référentiel fixe de l’arène)  
-  Utile pour le **point de vue “estrade”** : comparer des états indépendamment de l’orientation de l’agent.
-- **projection égocentrée / orientée** (référentiel de l’agent)  
-  Utile pour le **point de vue incarné** : lorsque l’agent tourne, la représentation tourne avec lui (donc les capteurs changent même si la position ne change pas).
+## perception : le runner orchestre, l’instrument observe
 
-✅ le runner doit rester **agnostique** : il ne choisit pas la projection “par magie”.  
-La projection doit être **fournie** par le point de vue/agent (ou par une couche d’adaptation) et être **traçable** dans le journal.
+Dans ce projet, l’agent n’accède pas au monde « directement » : il reçoit une **observation** produite par un **instrument**.
 
-### exigence de traçabilité dans le journal
-Pour éviter les malentendus en diagnostic, le journal devrait porter explicitement la projection utilisée, par exemple :
+- `world_sim` fournit un **état canonique** du monde (snapshot / état complet nécessaire à la perception).
+- `instrument` transforme cet état canonique en **observation** (ex. caméra estrade absolue, caméra égocentrée orientée).
+- le runner **orchestre** : pour chaque tick, il demande au monde un état canonique, le passe à l’instrument, puis journalise l’observation.
 
-- soit via un champ dédié : `projection_capteurs: "absolue" | "egocentree"`
-- soit via `format_capteurs`, par ex.  
-  `capteurs_b64_v1(u16_teinte,u8_int,u8_pack;projection=absolue)`  
-  `capteurs_b64_v1(u16_teinte,u8_int,u8_pack;projection=egocentree)`
+> objectif : rendre explicite la chaîne *monde → instrument → observation → agent → action*.
 
-## 2. Noyau partagé : `runner.app.noyau`
+---
+
+## journal d’épisodes : format sans compat (episodes_v2)
+
+Le journal n’est pas seulement « l’action + des pixels ». Il doit porter :
+- l’état canonique (ou sa forme minimale),
+- la(les) observation(s) produite(s) par instrument,
+- les métadonnées permettant de comprendre et rejouer.
+
+### structure recommandée d’un tick (v2)
+
+Champs minimaux :
+
+- `run_id`, `episode_id`, `tick`
+- `action` : action appliquée pour produire le tick observé
+- `etat` : snapshot canonique (largeur/hauteur, positions, direction, objets)
+- `observations` : liste d’observations (une par instrument)
+
+Chaque observation :
+
+- `instrument_id` : ex. `camera_estrade_absolue_v1`, `camera_egocentree_v1`
+- `repere` : `absolu` | `egocentre`
+- `params` : paramètres effectifs (rayon, fov, bruit, etc.)
+- `capteurs_format` : ex. `pixels_b64_v1`
+- `capteurs_compact` : payload compacté (base64)
+- `meta_observation` : optionnel (checksum, stats, etc.)
+
+> ce format casse volontairement la compatibilité : on assume que nous sommes encore en phase de découverte.
+
+---
+
+## noyau partagé : `runner.app.noyau`
 
 Le noyau vit dans :
 
 - `services/runner/app/noyau.py`
 
 Il expose :
-- `ParametresExecution` : nombre d'épisodes, ticks max, variation du seed par épisode
+
+- `ParametresExecution` : nombre d’épisodes, ticks max, variation du seed par épisode
 - `executer_episodes_headless(...)` : exécution batch / headless
 
-### 2.1 Convention temporelle et journal
+### convention temporelle (action vs tick)
 
-La convention du journal est la suivante :
+- tick `0` : observation initiale (pas d’action appliquée)
+- tick `t>0` : le journal porte l’action qui a été **appliquée** pour passer du tick `t-1` au tick `t`
 
-- on écrit systématiquement **tick 0** avec `action_direction = null`
-- à chaque pas :
-  - l'agent choisit une action depuis l'état courant (tick *t*)
-  - on applique l'action
-  - on observe l'état résultant (tick *t+1*)
-  - on écrit ce tick avec `action_direction = <action>`
-
-Cette convention permet :
-- de reconstruire proprement les transitions,
-- d'aligner les métriques et l'apprentissage en ligne sur les ticks du monde.
-
----
-
-## 3. Intégration CLI (ui_cli)
-
-Le CLI (`services/ui_cli/`) reste responsable de :
-- la gestion du bac-à-sable d'expérience,
-- les chemins de sortie (runs, datasets, diagnostics, registres),
-- les options de génération,
-- l'écriture des métriques.
-
-**Mais** l'exécution des épisodes est déléguée au noyau : `executer_episodes_headless`.
-
-Le CLI peut brancher des comportements additionnels via des **hooks** :
-- écriture de métriques
-- apprentissage en ligne (si l'agent expose une méthode dédiée)
-- autres instrumentations de cours
-
----
-
-## 4. Frontières à respecter (important)
-
-Pour maintenir un découpage sain (cours 5) :
-
-- le runner ne doit pas connaître les règles épistémiques
-- le runner ne doit pas décider pour l'agent
-- le runner ne doit pas interpréter les résultats (diagnostics, conclusions)
-- le runner doit rester déterministe et reproductible (seed, paramètres explicites)
-
----
-
-## 5. Évolution attendue (cours 5+)
-
-Prochaines extensions naturelles, sans casser les frontières :
-
-- ajout de **traces de décision** (optionnelles) écrites au journal (mais produites par l'agent)
-- mode interactif (TUI) qui réutilise partiellement le noyau, tout en gardant ses contrôles
-- instrumentation d'évaluation (dans un composant dédié, pas dans le runner)
+Cette convention est indispensable pour :
+- aligner décision (avant `step`) et observation (après `step`)
+- conserver des replays et diagnostics non ambigus
