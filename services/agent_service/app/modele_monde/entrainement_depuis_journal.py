@@ -172,7 +172,7 @@ def entrainer_utilite_observateur_tabulaire_v1(
     - U(z,a,z1) = utilité d'un observateur à partir des signaux_percus
     - P(termine|z,a,z1) (réutilisée pour stopper les rollouts)
     """
-    from agent_service.app.agents.contrats import ContexteDecision, ContextePerception
+    from agent_service.app.contrats_agents import ContexteDecision
     from agent_service.app.signaux.signaux_percus_v1 import extraire_signaux_percus_v1
     from agent_service.app.observateurs.observateur_croissance_v1 import ObservateurCroissanceV1
 
@@ -186,9 +186,8 @@ def entrainer_utilite_observateur_tabulaire_v1(
             run_id=str(evt.get("run_id")),
             episode_id=int(evt.get("episode_id", 0) or 0),
             tick=int(evt.get("tick", 0) or 0),
-            largeur=int(evt.get("largeur", 0) or 0),
-            hauteur=int(evt.get("hauteur", 0) or 0),
-            perception=ContextePerception(),
+            observations={},
+            info={"largeur": int(evt.get("largeur", 0) or 0), "hauteur": int(evt.get("hauteur", 0) or 0)},
         )
         signaux = extraire_signaux_percus_v1(
             prev_evt=prev_evt,

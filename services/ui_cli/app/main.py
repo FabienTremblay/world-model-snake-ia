@@ -13,7 +13,7 @@ import yaml
 from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
 
 from agent_service.app.agents import AgentAleatoire, AgentCuriositeTabulaire
-from agent_service.app.agents.contrats import ContexteDecision, ContextePerception, IAgent
+from agent_service.app.contrats_agents import ContexteDecision, ContextePerception, IAgentArene
 from agent_service.app.modele_monde.latent_v1 import encoder_latent, ModeLatent
 
 from runner.app.journal import JournalEpisodes
@@ -294,11 +294,11 @@ def _resoudre_path_utilisateur(racine_projet: Path, exp_dir: Path | None, run_di
 
 
 
-def _fabriquer_agent(args: argparse.Namespace) -> IAgent:
+def _fabriquer_agent(args: argparse.Namespace) -> IAgentArene:
     nom = args.agent.strip().lower()
 
     if nom == 'agent_personne':
-        from agent_service.app.agent_runtime.agent_incarnations.agent_personne_runtime_v1 import AgentPersonneRuntimeV1
+        from agent_service.app.incarnations.agent_personne_v1 import AgentPersonneV1
 
         agent_personne_path = None
         if getattr(args, 'agent_personne_path', None):
@@ -312,7 +312,7 @@ def _fabriquer_agent(args: argparse.Namespace) -> IAgent:
         if not agent_personne_path:
             raise SystemExit("agent_personne: fournir --agent-personne-path, ou bien --agent-personne-id (avec --experience)")
 
-        return AgentPersonneRuntimeV1(agent_personne_path=agent_personne_path, seed=args.seed, mode_latent=args.latent)
+        return AgentPersonneV1(agent_personne_path=agent_personne_path, seed=args.seed, mode_latent=args.latent)
 
     if nom == 'aleatoire':
         return AgentAleatoire(seed=args.seed, epsilon=float(args.epsilon))
@@ -350,7 +350,7 @@ def _ecrire_metrics(
     action: str,
     checksum_avant: int,
     checksum_apres: int,
-    agent: IAgent,
+    agent: IAgentArene,
 ) -> None:
     ligne: dict = {
         "ts_ns": time.time_ns(),
@@ -760,7 +760,7 @@ def main(argv: list[str] | None = None) -> None:
                 agent=agent,
                 journal=journal,
                 params=params_exec,
-                perception=ContextePerception(),
+                perception=None,
                 encoder_latent=encoder_latent,
                 mode_latent=str(args.latent),
                 hook_apres_action=hook_apres_action,

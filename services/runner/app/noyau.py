@@ -18,11 +18,8 @@ Portée
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from agent_service.app.agent_runtime.agents_in_arene.contrats import (
-    ContexteDecision,
-    ContextePerception,
-    IAgent,
-)
+from agent_service.app.contrats_agents import ContexteDecision, ContextePerception, IAgentArene
+from instrument.app.contrats import EtatMondeCanonique, ObservationInstrument, ObservationPixels
 from runner.app.journal import JournalEpisodes
 from world_sim.app.monde_snake import ConfigMonde, MondeSnake
 
@@ -44,11 +41,39 @@ HookApresAction = Callable[[str, int, MondeSnake, str, str, str, list, list], No
 # (run_id, episode_id, monde, action, z_avant, z_apres, capteurs_avant, capteurs_apres)
 
 
+def _etat_canonique_depuis_monde(monde: MondeSnake, cfg: ConfigMonde) -> EtatMondeCanonique:
+    return EtatMondeCanonique(
+        largeur=cfg.largeur,
+        hauteur=cfg.hauteur,
+        serpent=list(getattr(monde, "serpent", [])),
+        direction=getattr(monde, "direction", None),
+        nourritures=set(getattr(monde, "nourriture", [])) if hasattr(monde, "nourriture") else set(),
+        porte=getattr(monde, "porte_pos", None),
+        porte_ouverte=bool(getattr(monde, "porte_ouverte", False)),
+        palette=cfg.palette,
+    )
+
+
+def _observer_instruments(insts, etat: EtatMondeCanonique) -> dict[str, ObservationInstrument]:
+    sorties: dict[str, ObservationInstrument] = {}
+    for inst in insts:
+        obs = inst.observer(etat)
+        sorties[getattr(inst, "instrument_id", inst.__class__.__name__)] = obs
+    return sorties
+
+
+def _capteurs_depuis_observations(obs: dict[str, ObservationInstrument]) -> list | None:
+    for v in obs.values():
+        if isinstance(v, ObservationPixels):
+            return v.pixels
+    return None
+
+
 def executer_episodes_headless(
     *,
     run_id: str,
     cfg_base: ConfigMonde,
-    agent: IAgent,
+    agent: IAgentArene,
     journal: JournalEpisodes,
     params: ParametresExecution,
     # perception par défaut côté agent (point de vue incarné)
@@ -70,7 +95,7 @@ def executer_episodes_headless(
     """
 
     if perception is None:
-        perception = ContextePerception()
+        perception = ContextePerception(run_id=None, episode_id=None, tick=0, observations={})
 
     episodes = int(params.episodes)
     max_ticks = int(params.max_ticks)
@@ -110,24 +135,28 @@ def executer_episodes_headless(
 
         # ticks
         for _ in range(max_ticks):
+            # instruments -> observations pour la décision
+            etat_canonique = _etat_canonique_depuis_monde(monde, cfg)
+            insts = list(agent.instruments())
+            observations = _observer_instruments(insts, etat_canonique)
+
             ctx = ContexteDecision(
                 run_id=run_id,
                 episode_id=episode_id,
                 tick=monde.tick,
-                largeur=cfg.largeur,
-                hauteur=cfg.hauteur,
-                direction=getattr(monde, "direction", None),
-                perception=perception,
+                observations=observations,
+                info={"largeur": cfg.largeur, "hauteur": cfg.hauteur, "direction": getattr(monde, "direction", None)},
             )
 
-            action = agent.choisir_action(capteurs, ctx)
+            action = agent.choisir_action(ctx)
             if action is None:
                 raise RuntimeError(f"agent a retourné None: {type(agent).__module__}.{type(agent).__name__}")
 
             z_avant = ""
             z_apres = ""
             if encoder_latent is not None:
-                z_avant = encoder_latent(capteurs, mode_latent)
+                capteurs_avant = _capteurs_depuis_observations(observations) or capteurs
+                z_avant = encoder_latent(capteurs_avant, mode_latent)
 
             # appliquer => tick t+1
             monde.step(direction=action)

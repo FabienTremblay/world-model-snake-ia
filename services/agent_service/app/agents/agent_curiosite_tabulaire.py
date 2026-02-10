@@ -14,12 +14,11 @@ import random
 from dataclasses import dataclass
 from typing import Tuple
 
-from commun.contrats import Pixel
-
 from agent_service.app.modele_monde.latent_v1 import ModeLatent, encoder_latent
 from agent_service.app.modele_monde.tabulaire_v1 import ModeleMondeTabulaireV1
 
-from .contrats import ContexteDecision, IAgent
+from agent_service.app.contrats_agents import ContexteDecision, IAgentArene
+from .utils_observations import pixels_depuis_contexte
 
 
 @dataclass(frozen=True)
@@ -33,21 +32,32 @@ class ParametresCuriosite:
     actions: Tuple[str, ...] = ("haut", "bas", "gauche", "droite")
 
 
-class AgentCuriositeTabulaire(IAgent):
+class AgentCuriositeTabulaire(IAgentArene):
     """Choisit l'action la plus informative selon un modèle tabulaire."""
+
+    id_agent = "curiosite_tabulaire"
 
     def __init__(
         self,
         seed: int | None = None,
         params: ParametresCuriosite | None = None,
         mode_latent: ModeLatent = "checksum",
+        instruments: list[object] | None = None,
     ) -> None:
         self.rng = random.Random(seed)
         self.params = params or ParametresCuriosite()
         self.mode_latent: ModeLatent = mode_latent
         self.modele = ModeleMondeTabulaireV1()
+        self._instruments = list(instruments or [])
 
-    def choisir_action(self, capteurs: list[list[Pixel]], contexte: ContexteDecision) -> str:
+    def definir_instruments(self, instruments: list[object]) -> None:
+        self._instruments = list(instruments)
+
+    def instruments(self) -> list[object]:
+        return list(self._instruments)
+
+    def choisir_action(self, contexte: ContexteDecision) -> str:
+        capteurs = pixels_depuis_contexte(contexte)
         # epsilon-greedy
         if self.rng.random() < float(self.params.epsilon):
             return self.rng.choice(list(self.params.actions))

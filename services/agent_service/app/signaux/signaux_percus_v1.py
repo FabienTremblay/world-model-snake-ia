@@ -16,7 +16,7 @@ des perceptions partielles (vision 180°, agent sourd, etc.).
 
 from __future__ import annotations
 
-from agent_service.app.agents.contrats import ContexteDecision, ContextePerception
+from agent_service.app.contrats_agents import ContexteDecision
 
 from .signaux_monde_v1 import extraire_signaux_monde_v1
 
@@ -55,17 +55,11 @@ def extraire_signaux_percus_v1(
     """
 
     _ = capteurs_t, capteurs_t1  # réservé aux versions ultérieures
-    perception = contexte.perception or ContextePerception()
-
-    # v1 : perception "estrade" (omnisciente). On conserve la trace du profil.
+    # v1 : perception omnisciente (signaux du monde). L'instrumentation est
+    # gérée ailleurs; ici on conserve juste une trace de "mode".
     signaux = extraire_signaux_monde_v1(prev_evt, curr_evt)
     signaux["profil_perception"] = {
-        "champ_vision_deg": perception.champ_vision_deg,
-        "rayon_vision": perception.rayon_vision,
-        "voit": perception.voit,
-        "entend": perception.entend,
-        "ressent": perception.ressent,
-        "mode": "estrade_v1",
+        "mode": "monde_v1",
     }
     return signaux
 

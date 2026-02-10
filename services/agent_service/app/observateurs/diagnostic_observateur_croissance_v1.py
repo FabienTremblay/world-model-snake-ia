@@ -6,7 +6,7 @@ import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from agent_service.app.agents.contrats import ContexteDecision, ContextePerception
+from agent_service.app.contrats_agents import ContexteDecision, ContextePerception
 from agent_service.app.signaux.signaux_percus_v1 import extraire_signaux_percus_v1
 from agent_service.app.observateurs.observateur_croissance_v1 import ObservateurCroissanceV1
 
@@ -50,14 +50,12 @@ def main(argv: list[str] | None = None) -> None:
         if len(evts) < 2:
             continue
 
-        # contexte de perception par défaut (estrade_v1 aujourd'hui)
         ctx = ContexteDecision(
             run_id=run_id,
             episode_id=episode_id,
             tick=0,
-            largeur=int(evts[0].get("largeur", 0) or 0),
-            hauteur=int(evts[0].get("hauteur", 0) or 0),
-            perception=ContextePerception(),
+            observations={},
+            info={"largeur": int(evts[0].get("largeur", 0) or 0), "hauteur": int(evts[0].get("hauteur", 0) or 0)},
         )
 
         for i in range(1, len(evts)):
@@ -67,9 +65,8 @@ def main(argv: list[str] | None = None) -> None:
                 run_id=run_id,
                 episode_id=episode_id,
                 tick=int(curr_evt.get("tick", 0) or 0),
-                largeur=ctx.largeur,
-                hauteur=ctx.hauteur,
-                perception=ctx.perception,
+                observations={},
+                info=ctx.info,
             )
 
             signaux = extraire_signaux_percus_v1(

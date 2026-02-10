@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import random
 
-from commun.contrats import Pixel
-
-from .contrats import ContexteDecision, IAgent
+from agent_service.app.contrats_agents import ContexteDecision, IAgentArene
 
 
-class AgentAleatoire(IAgent):
+class AgentAleatoire(IAgentArene):
     """Agent d'exploration simple.
 
     Choisit une direction aléatoire à chaque tick.
@@ -23,14 +21,22 @@ class AgentAleatoire(IAgent):
         ("droite", "gauche"),
     }
 
-    def __init__(self, seed: int | None = None, epsilon: float = 0.0) -> None:
+    id_agent = "aleatoire"
+
+    def __init__(self, seed: int | None = None, epsilon: float = 0.0, instruments: list[object] | None = None) -> None:
         self.rng = random.Random(seed)
         self.derniere_action: str | None = None
         # epsilon: probabilité d'ignorer la contrainte d'opposition (rarement utile)
         self.epsilon = float(epsilon)
+        self._instruments = list(instruments or [])
 
-    def choisir_action(self, capteurs: list[list[Pixel]], contexte: ContexteDecision) -> str:
-        # capteurs inutilisés, mais fait partie du contrat.
+    def definir_instruments(self, instruments: list[object]) -> None:
+        self._instruments = list(instruments)
+
+    def instruments(self) -> list[object]:
+        return list(self._instruments)
+
+    def choisir_action(self, contexte: ContexteDecision) -> str:
         if self.derniere_action is None:
             a = self.rng.choice(list(self.ACTIONS))
             self.derniere_action = a

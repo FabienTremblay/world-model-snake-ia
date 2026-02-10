@@ -282,26 +282,10 @@ class SourceReplay:
         return self._replay_session
 
     def direction_pour(self, *, episode_id: int, tick: int) -> Optional[str]:
-        """Direction reconstruite pour le rendu orienté (REPLAY)."""
-        try:
-            eid = int(episode_id)
-            tk = int(tick)
-        except Exception:
-            return None
-        m = self._direction_map_par_episode.get(eid)
-        if not m:
-            return None
-        return m.get(tk)
+        """Direction reconstruite pour le rendu orienté (REPLAY).
 
-    def direction_pour(self, *, episode_id: int, tick: int) -> Optional[str]:
-        """Retourne une direction exploitable pour le rendu orienté (REPLAY).
-
-        Purement pour l'UI: on ne touche pas aux capteurs, et on n'infère rien.
-        Source: événement du journal indexé (episode_id, tick).
-
-        Convention minimale: si `action` vaut une direction cardinale (haut/bas/gauche/droite),
-        on la considère comme direction courante affichable.
-        Sinon -> None.
+        Source: cache _direction_map_par_episode (calculée une fois au chargement).
+        Convention: tick=0 => direction initiale "droite".
         """
         try:
             eid = int(episode_id)
@@ -309,13 +293,10 @@ class SourceReplay:
         except Exception:
             return None
 
-        tick_map = self._tick_map_par_episode.get(eid) or {}
-        evt = tick_map.get(tk) or {}
-        action = (evt.get("action") or "").strip()
-
-        if action in {"haut", "bas", "gauche", "droite"}:
-            return action
-        return None
+        m = self._direction_map_par_episode.get(eid)
+        if not m:
+            return "droite" if tk == 0 else None
+        return m.get(tk) if tk in m else ("droite" if tk == 0 else None)
 
     def start(self) -> None:
         lancer_spectateur(self.bus)

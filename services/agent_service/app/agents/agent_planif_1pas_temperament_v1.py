@@ -43,7 +43,8 @@ from agent_service.app.modele_monde.entrainement_depuis_journal import (
 from agent_service.app.modele_monde.latent_v1 import ModeLatent, encoder_latent
 from world_sim.app.arenes_yaml import charger_arene_v0
 
-from .contrats import ContexteDecision, IAgent
+from agent_service.app.contrats_agents import ContexteDecision, IAgentArene
+from .utils_observations import pixels_depuis_contexte
 
 
 def _bonus_curiosite_support(support: int) -> float:
@@ -87,18 +88,22 @@ class ParametresTemperament:
         return ParametresTemperament(style="equilibre", lambda_risque=6.0, beta_curiosite=1.0, p_term_prior_inconnu=0.20)
 
 
-class AgentPlanif1PasTemperamentV1(IAgent):
+class AgentPlanif1PasTemperamentV1(IAgentArene):
     """Planification 1-pas: compare des futurs immédiats (imagination courte)."""
+
+    id_agent = "planif_1pas_temperament"
 
     def __init__(
         self,
         seed: int | None = None,
         mode_latent: ModeLatent = "checksum",
         params: ParametresTemperament | None = None,
+        instruments: list[object] | None = None,
     ) -> None:
         self._rng = random.Random(seed)
         self._mode_latent: ModeLatent = mode_latent
         self._params: ParametresTemperament = params or ParametresTemperament.depuis_style(os.environ.get("SNAKE_TEMPERAMENT", "equilibre"))
+        self._instruments = list(instruments or [])
 
         # Ce planificateur s'appuie sur les journaux "checksum" (cours 1/4).
         if self._mode_latent != "checksum":
@@ -171,7 +176,14 @@ class AgentPlanif1PasTemperamentV1(IAgent):
         score += float(self._params.beta_curiosite) * float(bonus_curio)
         return float(score)
 
-    def choisir_action(self, capteurs: list[list[Pixel]], contexte: ContexteDecision) -> str:
+    def definir_instruments(self, instruments: list[object]) -> None:
+        self._instruments = list(instruments)
+
+    def instruments(self) -> list[object]:
+        return list(self._instruments)
+
+    def choisir_action(self, contexte: ContexteDecision) -> str:
+        capteurs = pixels_depuis_contexte(contexte)
         z = int(encoder_latent(capteurs, self._mode_latent))
 
         meilleur = float("-inf")

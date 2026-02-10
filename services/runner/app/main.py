@@ -14,10 +14,11 @@ from world_sim.app.monde_snake import ConfigMonde, MondeSnake
 from world_sim.app.arenes_yaml import charger_arene_v0
 from runner.app.journal import JournalEpisodes
 
-from agent_service.app.agent_runtime.agents_in_arene.contrats import ContexteDecision, ContextePerception, IAgent
+from agent_service.app.catalogue_agents import creer_agent
+from agent_service.app.contrats_agents import ContexteDecision, ContextePerception, IAgentArene
 
 from instrument.app.contrats import EtatMondeCanonique, ObservationInstrument
-from instrument.app.instruments import CameraEstradeAbsolueV1, InstrumentGPSV1
+from instrument.app.instruments import CameraEgocentreeV1, InstrumentGPSV1
 
 
 def _mesurer_bruit(capteurs_canon, capteurs):
@@ -41,7 +42,7 @@ def _mesurer_bruit(capteurs_canon, capteurs):
     return f"bruit: Δteinte≈{somme_dt/n:.1f}, Δint≈{somme_di/n:.1f}"
 
 
-def _fabriquer_agent_depuis_env() -> IAgent | None:
+def _fabriquer_agent_depuis_env() -> IAgentArene | None:
     """Option TUI : si SNAKE_AGENT est défini, on joue en mode auto."""
     nom = os.getenv("SNAKE_AGENT", "").strip().lower()
     if not nom:
@@ -53,15 +54,11 @@ def _fabriquer_agent_depuis_env() -> IAgent | None:
 
     seed_int = int(seed) if seed not in (None, "") else None
 
-    # On privilégie `agent_runtime` (cours 5) ; wrappers vers cours 4.
     if nom == "aleatoire":
-        from agent_service.app.agent_runtime.agents_in_arene import AgentAleatoire
-
-        return AgentAleatoire(seed=seed_int, epsilon=float(epsilon))
+        return creer_agent(nom, seed=seed_int, epsilon=float(epsilon))
 
     if nom == "curiosite_tabulaire":
         from agent_service.app.agents.agent_curiosite_tabulaire import ParametresCuriosite
-        from agent_service.app.agent_runtime.agents_in_arene import AgentCuriositeTabulaire
 
         params = ParametresCuriosite(
             epsilon=float(epsilon),
@@ -69,28 +66,16 @@ def _fabriquer_agent_depuis_env() -> IAgent | None:
             w_entropie=float(os.getenv("SNAKE_W_ENTROPIE", "1.0")),
             w_inconfiance=float(os.getenv("SNAKE_W_INCONFIANCE", "1.0")),
         )
-        return AgentCuriositeTabulaire(seed=seed_int, params=params, mode_latent=mode_latent)
+        return creer_agent(nom, seed=seed_int, params=params, mode_latent=mode_latent)
 
     if nom == "planif_mpc_tabulaire":
-        from agent_service.app.agent_runtime.agents_in_arene.agent_planif_mpc_tabulaire import (
-            AgentPlanifMPC as AgentPlanifMPCTabulaire,
-        )
-
-        return AgentPlanifMPCTabulaire(seed=seed_int, mode_latent=mode_latent)
+        return creer_agent(nom, seed=seed_int, mode_latent=mode_latent)
 
     if nom == "planif_mpc_observateur_tabulaire":
-        from agent_service.app.agent_runtime.agents_in_arene.agent_planif_mpc_observateur_tabulaire import (
-            AgentPlanifMPCObservateurTabulaire,
-        )
-
-        return AgentPlanifMPCObservateurTabulaire(seed=seed_int, mode_latent=mode_latent)
+        return creer_agent(nom, seed=seed_int, mode_latent=mode_latent)
 
     if nom == "planif_1pas_temperament":
-        from agent_service.app.agent_runtime.agents_in_arene.agent_planif_1pas_temperament_v1 import (
-            AgentPlanif1PasTemperamentV1,
-        )
-
-        return AgentPlanif1PasTemperamentV1(seed=seed_int, mode_latent=mode_latent)
+        return creer_agent(nom, seed=seed_int, mode_latent=mode_latent)
 
     raise SystemExit(f"SNAKE_AGENT inconnu: {nom!r}")
 
@@ -113,7 +98,7 @@ def _etat_canonique_depuis_monde(monde: MondeSnake, cfg: ConfigMonde) -> EtatMon
     )
 
 
-def _instruments_depuis_agent(agent: IAgent | None):
+def _instruments_depuis_agent(agent: IAgentArene | None):
     """Retourne la liste des instruments 'portés' par l'agent.
 
     Convention:
@@ -127,9 +112,9 @@ def _instruments_depuis_agent(agent: IAgent | None):
             if insts is not None:
                 return list(insts)
 
-    # fallback minimal : caméra estrade + gps (données)
+    # fallback minimal : caméra égocentrée + gps (données)
     return [
-        CameraEstradeAbsolueV1(niveau_bruit=0, seed_bruit=1),
+        CameraEgocentreeV1(rayon=2, niveau_bruit=0, seed_bruit=1),
         InstrumentGPSV1(),
     ]
 

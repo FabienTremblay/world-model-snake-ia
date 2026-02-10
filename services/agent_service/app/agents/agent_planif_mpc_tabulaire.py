@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
-from agent_service.app.agents.contrats import ContexteDecision, IAgent
+from agent_service.app.contrats_agents import ContexteDecision, IAgentArene
+from agent_service.app.agents.utils_observations import pixels_depuis_contexte
 from agent_service.app.modele_monde.entrainement_depuis_journal import (
     entrainer_modele_tabulaire_v1,
     entrainer_utilite_tabulaire_v1,
@@ -28,7 +29,7 @@ class ParametresAgentPlanifMPC:
     actions: Sequence[str] = ("haut", "bas", "gauche", "droite")
 
 
-class AgentPlanifMPCTabulaire(IAgent):
+class AgentPlanifMPCTabulaire(IAgentArene):
     """Agent MPC tabulaire (cours 4).
 
     Charge/entraîne offline des modèles depuis un journal existant.
@@ -36,11 +37,20 @@ class AgentPlanifMPCTabulaire(IAgent):
       - SNAKE_MODELE_JOURNAL (obligatoire)
     """
 
-    def __init__(self, seed: int | None, mode_latent: str, params: ParametresAgentPlanifMPC | None = None) -> None:
+    id_agent = "planif_mpc_tabulaire"
+
+    def __init__(
+        self,
+        seed: int | None,
+        mode_latent: str,
+        params: ParametresAgentPlanifMPC | None = None,
+        instruments: list[object] | None = None,
+    ) -> None:
         self._rng = random.Random(int(seed) if seed is not None else None)
         self._mode_latent = str(mode_latent)
         self._params = params or ParametresAgentPlanifMPC()
         self._cout_par_pas = 0.0
+        self._instruments = list(instruments or [])
         # optionnel: pour aligner l'objectif MPC avec l'arène courante
         # (le monde applique déjà epsilon_par_pas, mais le score journalisé ne le reflète pas)
 
@@ -66,7 +76,14 @@ class AgentPlanifMPCTabulaire(IAgent):
         self.modele_monde, _ = entrainer_modele_tabulaire_v1(journal_path, champ_latent=champ_latent)
         self.modele_r, self.modele_t, _ = entrainer_utilite_tabulaire_v1(journal_path, champ_latent=champ_latent)
 
-    def choisir_action(self, capteurs, ctx: ContexteDecision) -> str:
+    def definir_instruments(self, instruments: list[object]) -> None:
+        self._instruments = list(instruments)
+
+    def instruments(self) -> list[object]:
+        return list(self._instruments)
+
+    def choisir_action(self, ctx: ContexteDecision) -> str:
+        capteurs = pixels_depuis_contexte(ctx)
         z = int(encoder_latent(capteurs, self._mode_latent))
 
         p = ParametresMPC(

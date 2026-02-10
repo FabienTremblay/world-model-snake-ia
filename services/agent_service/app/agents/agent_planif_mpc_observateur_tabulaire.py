@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
-from agent_service.app.agents.contrats import ContexteDecision, IAgent
+from agent_service.app.contrats_agents import ContexteDecision, IAgentArene
+from agent_service.app.agents.utils_observations import pixels_depuis_contexte
 from agent_service.app.modele_monde.entrainement_depuis_journal import (
     entrainer_modele_tabulaire_v1,
     entrainer_utilite_observateur_tabulaire_v1,
@@ -31,13 +32,22 @@ class ParametresAgentPlanifMPCObservateur:
     actions: Sequence[str] = ("haut", "bas", "gauche", "droite")
 
 
-class AgentPlanifMPCObservateurTabulaire(IAgent):
+class AgentPlanifMPCObservateurTabulaire(IAgentArene):
     """MPC tabulaire, objectif = utilité d'observateur (signaux_percus)."""
 
-    def __init__(self, seed: int | None, mode_latent: str, params: ParametresAgentPlanifMPCObservateur | None = None) -> None:
+    id_agent = "planif_mpc_observateur_tabulaire"
+
+    def __init__(
+        self,
+        seed: int | None,
+        mode_latent: str,
+        params: ParametresAgentPlanifMPCObservateur | None = None,
+        instruments: list[object] | None = None,
+    ) -> None:
         self._rng = random.Random(int(seed) if seed is not None else None)
         self._mode_latent = str(mode_latent)
         self._params = params or ParametresAgentPlanifMPCObservateur()
+        self._instruments = list(instruments or [])
 
         p = os.environ.get("SNAKE_MODELE_JOURNAL")
         if not p:
@@ -54,7 +64,14 @@ class AgentPlanifMPCObservateurTabulaire(IAgent):
         self.modele_monde, _ = entrainer_modele_tabulaire_v1(journal_path, champ_latent=champ_latent)
         self.modele_u, self.modele_t, _ = entrainer_utilite_observateur_tabulaire_v1(journal_path, champ_latent=champ_latent)
 
-    def choisir_action(self, capteurs, ctx: ContexteDecision) -> str:
+    def definir_instruments(self, instruments: list[object]) -> None:
+        self._instruments = list(instruments)
+
+    def instruments(self) -> list[object]:
+        return list(self._instruments)
+
+    def choisir_action(self, ctx: ContexteDecision) -> str:
+        capteurs = pixels_depuis_contexte(ctx)
         z = int(encoder_latent(capteurs, self._mode_latent))
         p = ParametresMPCObservateur(
             horizon=int(self._params.horizon),
