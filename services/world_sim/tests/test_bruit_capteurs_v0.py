@@ -4,7 +4,7 @@ from __future__ import annotations
 import random
 
 from world_sim.app.arenes_yaml import PALETTE_DEFAUT
-from world_sim.app.projection_capteurs import appliquer_bruit, projeter_capteurs
+from instrument.app.projection_capteurs import appliquer_bruit, projeter_capteurs
 
 
 def _grille_base() -> list[list]:

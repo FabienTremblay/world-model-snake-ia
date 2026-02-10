@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from commun.contrats import Pixel
 from world_sim.app.arenes_yaml import PALETTE_DEFAUT
-from world_sim.app.projection_capteurs import projeter_capteurs
+from instrument.app.projection_capteurs import projeter_capteurs
 
 
 def test_projection_bordure_murs() -> None:

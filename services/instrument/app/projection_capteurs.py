@@ -1,11 +1,22 @@
-# services/world_sim/app/projection_capteurs.py
+# services/instrument/app/projection_capteurs.py
 from __future__ import annotations
+
+"""Projection des capteurs (v1).
+
+Cette projection correspond à la "caméra estrade" :
+    - repère absolu (point de vue estrade)
+    - invariant par rotation (la direction de la tête n'influence pas l'observation)
+
+Note : pour la v1, on dépend volontairement des types (`Pixel`) et palettes définis côté
+`world_sim`. L'objectif immédiat est de sortir l'instrumentation de `world_sim` afin
+de pouvoir ajouter ensuite des instruments alternatifs (ex. caméra égocentrée).
+"""
 
 from typing import List, Tuple
 import random
 
 from commun.contrats import Pixel
-from .arenes_yaml import PalettePixels, PALETTE_DEFAUT
+from world_sim.app.arenes_yaml import PalettePixels, PALETTE_DEFAUT
 
 Position = Tuple[int, int]
 
@@ -19,9 +30,9 @@ def projeter_capteurs(
     porte_ouverte: bool = False,
     palette: PalettePixels = PALETTE_DEFAUT,
 ) -> List[List[Pixel]]:
-    """
-    Transforme l'état interne en grille de capteurs (signal).
-    Important: aucune étiquette sémantique n'est exposée.
+    """Transforme l'état interne en grille de capteurs (signal).
+
+    Important : aucune étiquette sémantique n'est exposée.
     """
     capteurs: List[List[Pixel]] = [[palette.sol for _ in range(largeur)] for _ in range(hauteur)]
 
@@ -52,8 +63,8 @@ def projeter_capteurs(
 
 
 def rendre_debug_ascii(capteurs: List[List[Pixel]]) -> List[str]:
-    """
-    Rendu ASCII strictement pour debug (TUI).
+    """Rendu ASCII strictement pour debug (TUI).
+
     Le mapping ci-dessous est DEV ONLY.
     """
     lignes: List[str] = []
@@ -78,8 +89,6 @@ def rendre_debug_ascii(capteurs: List[List[Pixel]]) -> List[str]:
     return lignes
 
 
-
-
 def _clamp(v: int, vmin: int, vmax: int) -> int:
     return vmin if v < vmin else vmax if v > vmax else v
 
@@ -89,8 +98,7 @@ def appliquer_bruit(
     rng: random.Random,
     niveau_bruit: int,
 ) -> List[List[Pixel]]:
-    """
-    Applique un bruit léger aux capteurs (signal) sans modifier le rendu debug.
+    """Applique un bruit léger aux capteurs (signal) sans modifier le rendu debug.
 
     - teinte: jitter +-niveau_bruit (mod 360)
     - intensite: jitter +- (niveau_bruit*4) (clamp 0..255)
