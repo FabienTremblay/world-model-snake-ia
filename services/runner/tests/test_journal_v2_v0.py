@@ -19,8 +19,11 @@ def test_journal_v2_ecrit_meta_et_jsonl_et_payloads(tmp_path: Path) -> None:
     racine = tmp_path
     run_id = "r_test"
 
+    # Convention runner/bac-à-sable : <racine>/artefacts/runs/<run_id>/
+    run_dir = racine / "artefacts" / "runs" / run_id
+
     j = JournalV2Writer(
-        racine,
+        run_dir,
         run_id=run_id,
         meta={"exemple": True},
     )
@@ -59,7 +62,6 @@ def test_journal_v2_ecrit_meta_et_jsonl_et_payloads(tmp_path: Path) -> None:
     )
     j.fermer()
 
-    run_dir = racine / "artefacts" / "runs" / run_id
     assert (run_dir / "meta.json").exists()
     assert (run_dir / "journal.jsonl").exists()
 

@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from commun.bus import BusEtatMemoire
 from commun.controle import ControleExecution
 from commun.contrats import Observation
@@ -19,6 +21,51 @@ from agent_service.app.contrats_agents import ContexteDecision, ContextePercepti
 
 from instrument.app.contrats import EtatMondeCanonique, ObservationInstrument
 from instrument.app.instruments import CameraEgocentreeV1, InstrumentGPSV1
+
+
+def _charger_yaml(path: Path) -> dict:
+    """Charge un YAML en dict (ou {} si absent/invalide)."""
+    if not path.exists():
+        return {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return data if isinstance(data, dict) else {}
+
+
+def _horodatage_compact() -> str:
+    t = time.localtime()
+    return f"{t.tm_year:04d}-{t.tm_mon:02d}-{t.tm_mday:02d}_{t.tm_hour:02d}h{t.tm_min:02d}"
+
+
+def _preparer_run_dir(exp_dir: Path, cfg_exp: dict) -> Path:
+    """Prépare le répertoire de run selon `experience.yml`.
+
+    Objectif: journal v2 strictement aligné sur les paramètres du bac-à-sable.
+    - base = sorties.run_dir (relatif à exp_dir) ou `artefacts/runs`
+    - nom = horodatage + _tag optionnel (SNAKE_RUN_TAG)
+    - la convention est : <experience_dir>/<base>/<nom_run>/
+    """
+    sorties = cfg_exp.get("sorties") if isinstance(cfg_exp, dict) else None
+    if not isinstance(sorties, dict):
+        sorties = {}
+
+    run_dir_rel = sorties.get("run_dir")
+    if not isinstance(run_dir_rel, str) or not run_dir_rel.strip():
+        run_dir_rel = "artefacts/runs"
+
+    base_runs = (exp_dir / run_dir_rel).resolve()
+    base_runs.mkdir(parents=True, exist_ok=True)
+
+    tag = os.getenv("SNAKE_RUN_TAG", "").strip()
+    nom = _horodatage_compact()
+    nom_run = f"{nom}_{tag}" if tag else nom
+
+    run_dir = base_runs / nom_run
+    # Évite collision rare si relancé dans la même minute
+    if run_dir.exists():
+        run_dir = base_runs / f"{nom_run}_{time.time_ns() % 1_000_000:06d}"
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
 
 
 def _mesurer_bruit(capteurs_canon, capteurs):
@@ -134,7 +181,40 @@ def boucle_episodes(
 ) -> None:
     racine_projet = Path(__file__).resolve().parents[3]
 
-    arene_id = os.getenv("SNAKE_ARENE", "demo_v0").strip()
+    # --- bac-à-sable (expérience) -------------------------------------------------
+    experience_id = (os.getenv("SNAKE_EXPERIENCE") or os.getenv("SNAKE_EXPERIENCE_ID") or "").strip()
+    exp_dir: Path | None = None
+    cfg_exp: dict = {}
+    if experience_id:
+        exp_dir = (racine_projet / "donnees" / "config" / "experiences" / experience_id).resolve()
+        cfg_exp = _charger_yaml(exp_dir / "experience.yml")
+
+        # Si l'expérience déclare un journal_basename, on impose journal.jsonl (v2).
+        sorties = cfg_exp.get("sorties")
+        if isinstance(sorties, dict):
+            jb = sorties.get("journal_basename") or sorties.get("journal")
+            if isinstance(jb, str) and jb.strip() and jb.strip() != "journal.jsonl":
+                raise SystemExit(
+                    f"experience.yml ({experience_id}) doit déclarer sorties.journal_basename=journal.jsonl (v2). "
+                    f"Valeur actuelle: {jb!r}"
+                )
+
+        # Aligne le max_ticks avec l'expérience si fourni.
+        gen = cfg_exp.get("generation")
+        if isinstance(gen, dict):
+            mt = gen.get("max_ticks")
+            if isinstance(mt, int) and mt > 0:
+                ticks_max = mt
+
+    # arène : priorité experience.yml -> env -> défaut
+    arene_id = "demo_v0"
+    ar = None
+    arene_cfg = cfg_exp.get("arene") if isinstance(cfg_exp, dict) else None
+    if isinstance(arene_cfg, dict) and isinstance(arene_cfg.get("id"), str) and arene_cfg.get("id").strip():
+        arene_id = arene_cfg["id"].strip()
+    else:
+        arene_id = os.getenv("SNAKE_ARENE", "demo_v0").strip()
+
     path_arene = racine_projet / "donnees" / "config" / "arenes" / f"{arene_id}.yml"
     ar = charger_arene_v0(path_arene)
     cfg = ConfigMonde(
@@ -153,14 +233,42 @@ def boucle_episodes(
     )
 
     # Journal v2 (sans compat v1) : 1 répertoire par run, meta.json + journal.jsonl.
-    run_id = time.strftime("%Y%m%d_%H%M%S")
+    # run_id: stable, rejouable, peut être fourni par le bac-à-sable.
+    run_id = (os.getenv("SNAKE_RUN_ID") or str(time.time_ns())).strip()
+    if not run_id:
+        run_id = str(time.time_ns())
+
+    # Répertoire de run : priorité env -> bac-à-sable -> fallback projet
+    run_dir_env = (os.getenv("SNAKE_RUN_DIR") or "").strip()
+    if run_dir_env:
+        run_dir = Path(run_dir_env).expanduser().resolve()
+    elif exp_dir is not None:
+        run_dir = _preparer_run_dir(exp_dir, cfg_exp)
+    else:
+        run_dir = (racine_projet / "artefacts" / "runs" / run_id).resolve()
+
     meta = {
         "run": {
             "run_id": run_id,
-            "arene_id": ar.id,
-            "seed": ar.seed,
+            "run_dir": str(run_dir),
+            "ticks_max": ticks_max,
         },
         "bac_a_sable": {
+            "experience": {
+                "id": experience_id or None,
+                "dir": str(exp_dir) if exp_dir is not None else None,
+                "source_yml": (
+                    (exp_dir / "experience.yml").read_text(encoding="utf-8")
+                    if exp_dir is not None and (exp_dir / "experience.yml").exists()
+                    else None
+                ),
+                "config_resolue": cfg_exp,
+            },
+            "sorties": {
+                "journal_basename": "journal.jsonl",
+                "meta_filename": "meta.json",
+                "obs_dirname": "obs",
+            },
             "arene": {
                 "id": ar.id,
                 "source_yml": (path_arene.read_text(encoding="utf-8") if path_arene.exists() else None),
@@ -169,6 +277,11 @@ def boucle_episodes(
             "cfg_monde": cfg.__dict__,
         },
         "env": {
+            "SNAKE_EXPERIENCE": os.getenv("SNAKE_EXPERIENCE"),
+            "SNAKE_EXPERIENCE_ID": os.getenv("SNAKE_EXPERIENCE_ID"),
+            "SNAKE_RUN_ID": os.getenv("SNAKE_RUN_ID"),
+            "SNAKE_RUN_DIR": os.getenv("SNAKE_RUN_DIR"),
+            "SNAKE_RUN_TAG": os.getenv("SNAKE_RUN_TAG"),
             "SNAKE_ARENE": os.getenv("SNAKE_ARENE"),
             "SNAKE_AGENT": os.getenv("SNAKE_AGENT"),
             "SNAKE_AGENT_SEED": os.getenv("SNAKE_AGENT_SEED"),
@@ -176,7 +289,7 @@ def boucle_episodes(
             "SNAKE_AGENT_LATENT": os.getenv("SNAKE_AGENT_LATENT"),
         },
     }
-    journal = JournalV2Writer(racine_projet, run_id=run_id, meta=meta)
+    journal = JournalV2Writer(run_dir=run_dir, run_id=run_id, meta=meta)
 
     agent = _fabriquer_agent_depuis_env()
     perception = ContextePerception(champ_vision_deg=180)

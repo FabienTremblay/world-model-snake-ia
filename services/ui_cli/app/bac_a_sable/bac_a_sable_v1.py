@@ -138,7 +138,7 @@ generation:
 
 sorties:
   run_dir: artefacts/runs
-  journal: journal_episodes.jsonl
+  journal_basename: journal.jsonl
   capture_stdout: false
 """,
                 encoding="utf-8",
@@ -171,12 +171,37 @@ sorties:
         return bool(sorties.get("capture_stdout", False))
 
     def nom_fichier_journal_defaut(self) -> str:
+        """Nom de fichier du journal (basename) pour les runs.
+
+        Priorité:
+        1) sorties.journal_basename (v2)
+        2) sorties.journal (ancien, toléré pendant la transition)
+        3) défaut: journal.jsonl (v2)
+        """
         sorties = self.cfg.get("sorties") if isinstance(self.cfg, dict) else None
         sorties = sorties if isinstance(sorties, dict) else {}
-        s = str(sorties.get("journal") or "journal_episodes.jsonl").strip()
-        return s or "journal_episodes.jsonl"
+
+        s = sorties.get("journal_basename")
+        if s is None:
+            s = sorties.get("journal")
+
+        nom = str(s or "journal.jsonl").strip()
+        return nom or "journal.jsonl"
+
+
+    def verifier_journal_v2_strict(self) -> None:
+        """Vérifie que l'expérience est configurée pour le journal v2 (strict).
+
+        On ne cherche pas la rétro-compatibilité: si ce n'est pas `journal.jsonl`, on échoue.
+        """
+        nom = self.nom_fichier_journal_defaut()
+        if nom != "journal.jsonl":
+            raise ValueError(
+                f"bac-a-sable '{self.experience_id}': sorties.journal_basename (ou sorties.journal) doit être 'journal.jsonl' (trouvé: {nom!r})"
+            )
 
     def preparer_run(self, run_tag: Optional[str], run_id: str) -> Tuple[Path, Path, Path, Path]:
+
         """Retourne (run_dir, journal_path, stdout_path, meta_path)."""
         self.paths.runs_dir.mkdir(parents=True, exist_ok=True)
 

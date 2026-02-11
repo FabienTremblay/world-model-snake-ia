@@ -81,13 +81,14 @@ class JournalV2Writer:
 
     VERSION = "journal_v2"
 
-    def __init__(self, racine_projet: Path, run_id: str, meta: Dict[str, Any]) -> None:
+    def __init__(self, run_dir: Path, run_id: str, meta: Dict[str, Any]) -> None:
         actif = os.getenv("SNAKE_JOURNAL", "1").strip()
         self.actif = actif not in {"0", "false", "False", "non", "NO"}
         self.run_id = run_id
 
-        # Répertoire standard : artefacts/runs/<run_id>/
-        self.run_dir = racine_projet / "artefacts" / "runs" / run_id
+        # Répertoire de run fourni par le bac-à-sable (ou fallback).
+        # Convention: <experience_dir>/artefacts/runs/<run_name>/
+        self.run_dir = Path(run_dir).resolve()
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
         self.path_meta = self.run_dir / "meta.json"
@@ -98,7 +99,14 @@ class JournalV2Writer:
 
         # Écrit meta une seule fois (idempotent simple)
         if self.actif:
-            meta_out = {"version": self.VERSION, "ts_ns": time.time_ns(), **_jsonable(meta)}
+            # Meta: on force run_id + run_dir pour assurer la rejouabilité.
+            meta_out = {
+                "version": self.VERSION,
+                "ts_ns": time.time_ns(),
+                "run_id": self.run_id,
+                "run_dir": str(self.run_dir),
+                **_jsonable(meta),
+            }
             self.path_meta.write_text(json.dumps(meta_out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     def fermer(self) -> None:
