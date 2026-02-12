@@ -1,0 +1,30 @@
+# donnees/config/experiences/<id>/experience.yml
+# Bac à sable d'expérience (SAI).
+
+id: CHANGER_MOI
+description: ""
+
+modele_monde:
+  journal: artefacts/datasets/train.jsonl
+  champ_latent: signaux_hash
+  latent_cli: checksum
+
+arene:
+  # id d'arène (raccourci) ou chemin .yml
+  id: demo_v0
+
+agent:
+  id: aleatoire
+
+latent: checksum
+
+generation:
+  episodes: 100
+  max_ticks: 2000
+  seed: 123
+  niveau_bruit: null
+
+sorties:
+  run_dir: artefacts/runs
+  journal_basename: journal.jsonl
+  capture_stdout: false

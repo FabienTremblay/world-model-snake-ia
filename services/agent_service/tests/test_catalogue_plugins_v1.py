@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+
 from pathlib import Path
 import os
+import yaml
 import pytest
 
 from agent_service.app.catalogue_agents import charger_catalogue, creer_agent
@@ -90,9 +92,6 @@ def test_planif_1pas_temperament_ok_avec_env(tmp_path: Path):
 
     a = creer_agent("planif_1pas_temperament", params={})
     assert a is not None
-
-from pathlib import Path
-import yaml
 
 def test_tous_les_agent_yml_sont_valides_et_importables():
     base = Path("services/agent_service/app/agents")
