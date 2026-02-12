@@ -1,0 +1,43 @@
+version: snake_arene_v0
+id: snake_collectif_v1_train
+nom: "snake_collectif_v1_train"
+
+grille:
+  largeur: 11
+  hauteur: 9
+  lignes:
+    - "###########"
+    - "#.........#"
+    - "#..###....#"
+    - "#.........#"
+    - "#....S....#"
+    - "#.........#"
+    - "#....###..#"
+    - "#.........#"
+    - "###########"
+
+# Redondance volontaire : certains outils lisent 'carte' directement.
+carte:
+  - "###########"
+  - "#.........#"
+  - "#..###....#"
+  - "#.........#"
+  - "#....S....#"
+  - "#.........#"
+  - "#....###..#"
+  - "#.........#"
+  - "###########"
+
+serpent:
+  direction_initiale: "E"
+
+nourriture:
+  mode: "aleatoire"
+  max_simultanee: 1
+
+fin_episode:
+  collision_mur: true
+  collision_corps: true
+  famine:
+    active: true
+    ticks_sans_manger_max: 200
