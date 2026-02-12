@@ -358,10 +358,10 @@ def _fabriquer_agent(args: argparse.Namespace) -> IAgentArene:
     ):
         return creer_agent(nom, params=params)
 
-    raise SystemExit(
-        f"agent inconnu: {args.agent!r} (attendus: aleatoire, curiosite_tabulaire, planif_mpc_tabulaire, planif_mpc_observateur_tabulaire, planif_1pas_temperament, agent_personne)"
-    )
-
+    # Fallback canon (agents plug-ins v1) :
+    # Si l'id n'est pas dans la liste d'agents explicitement gérés par l'UI,
+    # on délègue au catalogue (qui validera l'existence et donnera une erreur claire sinon).
+    return creer_agent(nom, params=params)
 
 def _ecrire_metrics(
     fp,
