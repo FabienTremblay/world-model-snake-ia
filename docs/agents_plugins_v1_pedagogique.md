@@ -1,45 +1,37 @@
-# Agents Plug-ins v1 — Vision pédagogique
+# agents plug-ins v1 — vision pédagogique
 
-## Pourquoi les plug-ins ?
+ce document explique l’intention (le « pourquoi ») et la place de la norme plug-ins dans le cours.
 
-Passer d’une sélection codée en dur à un catalogue déclaratif permet :
-- extensibilité
-- séparation claire des responsabilités
-- alignement avec une architecture évolutive
+## le problème (avant)
 
----
+quand la liste des agents est codée en dur (if/elif), on obtient :
+- du couplage (runner ↔ agents)
+- des régressions fréquentes lors des ajouts
+- une difficulté à enseigner la séparation « description vs exécution »
 
-## Changement architectural
+## le changement (après)
 
-Avant :
-code → agent
+on passe à une sélection déclarative :
 
-Après :
-YAML → catalogue → fabrique → agent
+```
+yaml → catalogue → fabrique → agent
+```
 
----
+## ce que l’étudiant doit comprendre
 
-## Séparation conceptuelle
+- un **type d’agent** est une *définition* instanciable
+- une **incarnation** est une *instance préparée* (artefact runtime)
+- une **expérience** est un *bac-à-sable* reproductible (contexte + artefacts)
 
-Type d’agent : Déclaré via YAML
-Fabrique : Instancie l’agent
-Incarnation : Artefact runtime
-Expérience : Contexte d’exécution
+## lien avec la pédagogie world models
 
----
+le catalogue facilite :
+- la comparaison d’agents (même arène, même journal, mêmes instruments)
+- l’évolution progressive des agents (du simple au planificateur)
+- la mise en évidence des prérequis (ex. journaux d’entraînement) comme partie du contrat
 
-## Impact pédagogique
+## lien avec sai-e107
 
-Cette structure permet :
-- d’illustrer la distinction entre description et exécution
-- d’introduire la notion de contrat déclaratif
-- de préparer l’évolution vers des agents plus abstraits
-
----
-
-## Alignement avec SAI-E107
-
-L’incarnation n’est pas un type d’agent.
-Elle représente une instance préparée.
-
-Le catalogue ne référence que des types instanciables.
+sai-e107 traite l’agent “personne” et l’idée d’incarnation.
+le catalogue, lui, ne référence que les types sélectionnables par `--agent`.
+l’incarnation reste un objet distinct, produit par une étape de préparation.

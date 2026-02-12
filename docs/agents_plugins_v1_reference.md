@@ -1,75 +1,74 @@
-# Agents Plug-ins v1 — Référence technique
+# agents plug-ins v1 — référence technique
 
-## Objectif
-Normaliser la définition et l’instanciation des agents via un mécanisme
-de plug-ins déclaratifs basés sur YAML.
+ce document complète la documentation existante. il ne remplace rien.
 
-Le catalogue d’agents est désormais data-driven.
+## objectif
 
----
+normaliser la définition et l’instanciation des agents via un catalogue déclaratif basé sur yaml.
 
-## Arborescence attendue
+## arborescence attendue
 
+```
 services/agent_service/app/agents/
-    aleatoire/
+    <agent_id>/
         agent.yml
-    planif_mpc_tabulaire/
-        agent.yml
-    snake_collectif_v1/
+    <famille>/
         agent_c1.yml
         agent_c2.yml
+```
 
-Seuls les fichiers agent*.yml dans ce répertoire sont découverts.
+seuls les fichiers `agent*.yml` dans ce répertoire sont découverts.
 
----
+## contrat minimal `agent.yml`
 
-## Contrat minimal agent.yml
-
+```yaml
 version: 1
-id: planif_mpc_tabulaire
-fabrique: agent_service.app.agents._infra.fabriques_catalogue_v1:fabriquer_planif_mpc_tabulaire
-params_requis:
-  - SNAKE_MODELE_JOURNAL
+id: aleatoire
+fabrique: agent_service.app.agents._infra.fabriques_catalogue_v1:fabriquer_aleatoire
+params_requis: []
+```
 
-### Champs
+### champs
 
-- version : version du schéma
-- id : identifiant unique du type d’agent
-- fabrique : module:callable
-- params_requis : liste optionnelle de paramètres requis
+- `version` : version du schéma (actuellement `1`)
+- `id` : identifiant unique du type d’agent (utilisé par `--agent <id>`)
+- `fabrique` : chaîne `module:callable` importable (ex. `pkg.mod:fonction`)
+- `params_requis` : liste optionnelle de noms (env/params) requis
 
----
+## discovery
 
-## API stricte
+le catalogue scanne :
 
-creer_agent(id: str, params: dict)
+- `services/agent_service/app/agents/**/agent*.yml`
 
-Aucun kwargs supplémentaire n’est autorisé.
+il ne doit pas scanner :
+- `incarnations/`
+- `donnees/config/experiences/` (ce sont des bacs-à-sable, pas des types)
 
----
+## api stricte
 
-## Règles de prérequis
+```python
+creer_agent(id: str, params: dict) -> object
+```
 
-Un paramètre requis peut être satisfait via :
-1. params
-2. variable d’environnement
+- pas de kwargs
+- `params` est un dictionnaire libre transmis à la fabrique
 
-Sinon, exception explicite.
+## prérequis
 
----
+certains agents dépendent de ressources externes (ex. journal d’entraînement).
 
-## Garanties via tests
+norme :
+- la fabrique (ou l’agent) doit refuser explicitement si les prérequis sont absents
+- les prérequis sont satisfaits via :
+  - `params`
+  - ou variables d’environnement (ex. `SNAKE_MODELE_JOURNAL`)
 
-Les tests valident :
-- YAML parseable
-- Fabriques importables
-- Agents instanciables si prérequis satisfaits
-- API stricte
+## tests
 
----
-
-## Erreurs typiques
-
-- ModuleNotFoundError → chemin fabrique incorrect
-- ParserError YAML → indentation invalide
-- OSError → variable d’environnement manquante
+garanties minimales :
+- tous les `agent*.yml` sont parseables
+- toutes les fabriques sont importables
+- les agents “sans prérequis” sont instanciables avec `params={}`
+- les agents “avec prérequis” refusent sans env et passent avec env
+- l’api stricte refuse les kwargs
