@@ -1,0 +1,13 @@
+version: 1
+id: snake_collectif_v1_fourmi
+description: "campagne snake_collectif_v1 — agent fourmi (trace type phéromones, gps + caméra)"
+fabrique: agent_service.app.agents.snake_collectif_v1.fabriques_snake_collectif_v1:fabriquer_snake_collectif_v1_fourmi
+params_requis: []
+instruments_defaut:
+  - instrument_id: gps_v1
+    params: {}
+  - instrument_id: camera_egocentree_v1
+    params:
+      rayon: 2
+      niveau_bruit: 0
+      seed_bruit: 1
