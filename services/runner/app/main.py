@@ -90,7 +90,10 @@ def _mesurer_bruit(capteurs_canon, capteurs):
 
 
 def _fabriquer_agent_depuis_env() -> IAgentArene | None:
-    """Option TUI : si SNAKE_AGENT est défini, on joue en mode auto."""
+    """Option TUI : si SNAKE_AGENT est défini, on joue en mode auto.
+
+    Contrat strict: tout passe par `creer_agent(nom, params=...)` (pas de kwargs).
+    """
     nom = os.getenv("SNAKE_AGENT", "").strip().lower()
     if not nom:
         return None
@@ -102,29 +105,30 @@ def _fabriquer_agent_depuis_env() -> IAgentArene | None:
     seed_int = int(seed) if seed not in (None, "") else None
 
     if nom == "aleatoire":
-        return creer_agent(nom, seed=seed_int, epsilon=float(epsilon))
+        params = {"seed": seed_int, "epsilon": float(epsilon)}
+        return creer_agent(nom, params=params)
 
     if nom == "curiosite_tabulaire":
-        from agent_service.app.agents.agent_curiosite_tabulaire import ParametresCuriosite
+        params = {
+            "seed": seed_int,
+            "mode_latent": mode_latent,
+            "epsilon": float(epsilon),
+            "w_inconnu": float(os.getenv("SNAKE_W_INCONNU", "1.0")),
+            "w_entropie": float(os.getenv("SNAKE_W_ENTROPIE", "1.0")),
+            "w_inconfiance": float(os.getenv("SNAKE_W_INCONFIANCE", "1.0")),
+        }
+        return creer_agent(nom, params=params)
 
-        params = ParametresCuriosite(
-            epsilon=float(epsilon),
-            w_inconnu=float(os.getenv("SNAKE_W_INCONNU", "1.0")),
-            w_entropie=float(os.getenv("SNAKE_W_ENTROPIE", "1.0")),
-            w_inconfiance=float(os.getenv("SNAKE_W_INCONFIANCE", "1.0")),
-        )
-        return creer_agent(nom, seed=seed_int, params=params, mode_latent=mode_latent)
-
-    if nom == "planif_mpc_tabulaire":
-        return creer_agent(nom, seed=seed_int, mode_latent=mode_latent)
-
-    if nom == "planif_mpc_observateur_tabulaire":
-        return creer_agent(nom, seed=seed_int, mode_latent=mode_latent)
-
-    if nom == "planif_1pas_temperament":
-        return creer_agent(nom, seed=seed_int, mode_latent=mode_latent)
+    if nom in (
+        "planif_mpc_tabulaire",
+        "planif_mpc_observateur_tabulaire",
+        "planif_1pas_temperament",
+    ):
+        params = {"seed": seed_int, "mode_latent": mode_latent}
+        return creer_agent(nom, params=params)
 
     raise SystemExit(f"SNAKE_AGENT inconnu: {nom!r}")
+
 
 
 def _etat_canonique_depuis_monde(monde: MondeSnake, cfg: ConfigMonde) -> EtatMondeCanonique:

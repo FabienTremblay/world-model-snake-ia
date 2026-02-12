@@ -1,0 +1,13 @@
+version: 1
+id: planif_1pas_temperament
+description: "1 pas + tempérament"
+fabrique: agent_service.app.agents._infra.fabriques_catalogue_v1:fabriquer_planif_1pas_temperament
+instruments_defaut:
+  - instrument_id: camera_egocentree_v1
+    params:
+      rayon: 2
+      niveau_bruit: 0
+      seed_bruit: 1
+  - instrument_id: gps_v1
+    params: {}
+

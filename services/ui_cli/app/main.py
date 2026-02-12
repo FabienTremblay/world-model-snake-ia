@@ -12,7 +12,8 @@ from pathlib import Path
 import yaml
 from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
 
-from agent_service.app.agents import AgentAleatoire, AgentCuriositeTabulaire
+from agent_service.app.catalogue_agents import creer_agent
+
 from agent_service.app.contrats_agents import ContexteDecision, ContextePerception, IAgentArene
 from agent_service.app.modele_monde.latent_v1 import encoder_latent, ModeLatent
 
@@ -295,52 +296,72 @@ def _resoudre_path_utilisateur(racine_projet: Path, exp_dir: Path | None, run_di
 
 
 def _fabriquer_agent(args: argparse.Namespace) -> IAgentArene:
+    """Sélection canonique: toute instanciation passe par le catalogue.
+
+    Exception: la résolution de `agent_personne_path` reste côté UI car elle dépend du bac-à-sable.
+    """
     nom = args.agent.strip().lower()
 
-    if nom == 'agent_personne':
-        from agent_service.app.incarnations.agent_personne_v1 import AgentPersonneV1
+    params: dict = {}
 
+    # paramètres communs
+    if getattr(args, "seed", None) is not None:
+        params["seed"] = args.seed
+    if getattr(args, "latent", None):
+        params["mode_latent"] = str(args.latent)
+
+    if nom == "agent_personne":
         agent_personne_path = None
-        if getattr(args, 'agent_personne_path', None):
+        if getattr(args, "agent_personne_path", None):
             agent_personne_path = str(args.agent_personne_path)
-        elif getattr(args, 'agent_personne_id', None):
+        elif getattr(args, "agent_personne_id", None):
             # si on a --experience (obligatoire), on résout sous artefacts/agent_personne/<id>/agent_personne.json
             racine = _racine_projet()
             exp_dir = _chemin_experience(racine, str(args.experience))
-            agent_personne_path = str((exp_dir / 'artefacts' / 'agent_personne' / str(args.agent_personne_id) / 'agent_personne.json').resolve())
+            agent_personne_path = str(
+                (
+                    exp_dir
+                    / "artefacts"
+                    / "agent_personne"
+                    / str(args.agent_personne_id)
+                    / "agent_personne.json"
+                ).resolve()
+            )
 
         if not agent_personne_path:
-            raise SystemExit("agent_personne: fournir --agent-personne-path, ou bien --agent-personne-id (avec --experience)")
+            raise SystemExit(
+                "agent_personne: fournir --agent-personne-path, ou bien --agent-personne-id (avec --experience)"
+            )
 
-        return AgentPersonneV1(agent_personne_path=agent_personne_path, seed=args.seed, mode_latent=args.latent)
+        params["agent_personne_path"] = agent_personne_path
+        return creer_agent(nom, params=params)
 
-    if nom == 'aleatoire':
-        return AgentAleatoire(seed=args.seed, epsilon=float(args.epsilon))
-    if nom == 'planif_mpc_tabulaire':
-        from agent_service.app.agents.agent_planif_mpc_tabulaire import AgentPlanifMPCTabulaire
+    if nom == "aleatoire":
+        params["epsilon"] = float(args.epsilon)
+        return creer_agent(nom, params=params)
 
-        return AgentPlanifMPCTabulaire(seed=args.seed, mode_latent=args.latent)
-    if nom == 'planif_mpc_observateur_tabulaire':
-        from agent_service.app.agents.agent_planif_mpc_observateur_tabulaire import AgentPlanifMPCObservateurTabulaire
-        return AgentPlanifMPCObservateurTabulaire(seed=args.seed, mode_latent=args.latent)
-
-    if nom == 'planif_1pas_temperament':
-        from agent_service.app.agents.agent_planif_1pas_temperament_v1 import AgentPlanif1PasTemperamentV1
-
-        return AgentPlanif1PasTemperamentV1(seed=args.seed, mode_latent=args.latent)
-    if nom == 'curiosite_tabulaire':
-        from agent_service.app.agents.agent_curiosite_tabulaire import ParametresCuriosite
-
-        params = ParametresCuriosite(
-            epsilon=float(args.epsilon),
-            w_inconnu=float(args.w_inconnu),
-            w_entropie=float(args.w_entropie),
-            w_inconfiance=float(args.w_inconfiance),
+    if nom == "curiosite_tabulaire":
+        params.update(
+            {
+                "epsilon": float(args.epsilon),
+                "w_inconnu": float(args.w_inconnu),
+                "w_entropie": float(args.w_entropie),
+                "w_inconfiance": float(args.w_inconfiance),
+            }
         )
-        return AgentCuriositeTabulaire(seed=args.seed, params=params, mode_latent=args.latent)
+        return creer_agent(nom, params=params)
+
+    if nom in (
+        "planif_mpc_tabulaire",
+        "planif_mpc_observateur_tabulaire",
+        "planif_1pas_temperament",
+    ):
+        return creer_agent(nom, params=params)
+
     raise SystemExit(
         f"agent inconnu: {args.agent!r} (attendus: aleatoire, curiosite_tabulaire, planif_mpc_tabulaire, planif_mpc_observateur_tabulaire, planif_1pas_temperament, agent_personne)"
     )
+
 
 def _ecrire_metrics(
     fp,

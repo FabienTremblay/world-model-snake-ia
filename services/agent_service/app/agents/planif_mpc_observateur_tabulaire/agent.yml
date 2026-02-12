@@ -1,0 +1,13 @@
+version: 1
+id: planif_mpc_observateur_tabulaire
+description: "Planification MPC + observateur"
+fabrique: agent_service.app.agents._infra.fabriques_catalogue_v1:fabriquer_planif_mpc_observateur_tabulaire
+instruments_defaut:
+  - instrument_id: camera_egocentree_v1
+    params:
+      rayon: 2
+      niveau_bruit: 0
+      seed_bruit: 1
+  - instrument_id: gps_v1
+    params: {}
+
