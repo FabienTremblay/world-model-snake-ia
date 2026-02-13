@@ -10,7 +10,7 @@ from typing import Optional, Any
 
 from commun.bus import BusEtatMemoire
 from commun.controle import ControleExecution
-from commun.contrats import Observation
+from commun.contrats import Observation, Pixel
 from agent_service.app.main import lancer_spectateur
 from runner.app.main import boucle_episodes
 from runner.app.replay_api import Replay
@@ -80,6 +80,96 @@ def _formatter_action_pour_tui(*, tick: int, action: Any) -> str:
         return a
 
     return f"non supportée:{a}"
+
+# --- Décodage journal v2 (Option A) -------------------------------------------
+
+def _decoder_capteurs_npz(path_npz: Path) -> list[list[Pixel]]:
+    """Charge un NPZ (teinte/intensite/motif/clignote) en grille de Pixel."""
+    import numpy as np  # import local: dépendance déjà présente ailleurs (journal_v2)
+
+    data = np.load(path_npz)
+    teinte = data["teinte"]
+    intensite = data["intensite"]
+    motif = data["motif"]
+    clignote = data["clignote"]
+
+    h, w = int(teinte.shape[0]), int(teinte.shape[1])
+    capteurs: list[list[Pixel]] = []
+    for y in range(h):
+        row: list[Pixel] = []
+        for x in range(w):
+            row.append(
+                Pixel(
+                    teinte=int(teinte[y, x]) % 360,
+                    intensite=int(intensite[y, x]),
+                    motif=int(motif[y, x]),
+                    clignote=int(clignote[y, x]),
+                )
+            )
+        capteurs.append(row)
+    return capteurs
+
+
+def _capteurs_synthetiques_depuis_monde_canonique(monde: dict) -> list[list[Pixel]]:
+    """Fallback si aucune caméra n'est présente dans le journal v2.
+
+    On reconstruit un 'capteur' minimal depuis monde_canonique.
+    Hypothèse snake-centric:
+      - murs = bordure
+      - nourriture / serpent / porte projetés en motifs compatibles avec _rendre_debug_depuis_capteurs()
+    """
+    try:
+        largeur = int(monde.get("largeur", 0) or 0)
+        hauteur = int(monde.get("hauteur", 0) or 0)
+    except Exception:
+        largeur, hauteur = 0, 0
+
+    if largeur <= 0 or hauteur <= 0:
+        return []
+
+    # helpers motifs (doivent matcher runner.app.replay._rendre_debug_depuis_capteurs)
+    def px_vide():
+        return Pixel(teinte=0, intensite=0, motif=0, clignote=0)
+
+    grille = [[px_vide() for _ in range(largeur)] for _ in range(hauteur)]
+
+    # bordure = mur
+    for x in range(largeur):
+        grille[0][x] = Pixel(teinte=0, intensite=255, motif=3, clignote=0)
+        grille[hauteur - 1][x] = Pixel(teinte=0, intensite=255, motif=3, clignote=0)
+    for y in range(hauteur):
+        grille[y][0] = Pixel(teinte=0, intensite=255, motif=3, clignote=0)
+        grille[y][largeur - 1] = Pixel(teinte=0, intensite=255, motif=3, clignote=0)
+
+    # nourritures
+    nourritures = monde.get("nourritures")
+    if isinstance(nourritures, list):
+        for pos in nourritures:
+            if isinstance(pos, (list, tuple)) and len(pos) == 2:
+                x, y = int(pos[0]), int(pos[1])
+                if 0 <= x < largeur and 0 <= y < hauteur:
+                    grille[y][x] = Pixel(teinte=120, intensite=255, motif=6, clignote=1)
+
+    # serpent (corps ... tête)
+    serpent = monde.get("serpent")
+    if isinstance(serpent, list) and serpent:
+        for i, pos in enumerate(serpent):
+            if isinstance(pos, (list, tuple)) and len(pos) == 2:
+                x, y = int(pos[0]), int(pos[1])
+                if 0 <= x < largeur and 0 <= y < hauteur:
+                    is_tete = (i == len(serpent) - 1)
+                    grille[y][x] = Pixel(teinte=30 if is_tete else 20, intensite=255, motif=5 if is_tete else 2, clignote=0)
+
+    # porte (optionnelle)
+    porte = monde.get("porte")
+    if isinstance(porte, (list, tuple)) and len(porte) == 2:
+        x, y = int(porte[0]), int(porte[1])
+        if 0 <= x < largeur and 0 <= y < hauteur:
+            ouverte = bool(monde.get("porte_ouverte", False))
+            grille[y][x] = Pixel(teinte=200, intensite=255, motif=1, clignote=1 if ouverte else 0)
+
+    return grille
+
 
 @dataclass
 class SessionConfig:
@@ -352,25 +442,83 @@ class SourceReplay:
                                 episode_courant = int(demande)
                                 redemarrer = True
                                 break
+                        # --- compat replay v1/v2 -------------------------------------------------
+                        version = str(evt.get("version") or "").strip()
 
-                        largeur = int(evt.get("largeur", 0) or 0)
-                        hauteur = int(evt.get("hauteur", 0) or 0)
-                        capteurs_b64 = evt.get("capteurs_compact") or evt.get("capteurs_b64") or evt.get("capteurs")
-                        capteurs = decoder_capteurs_b64(capteurs_b64, largeur=largeur, hauteur=hauteur)
-                        rendu_debug = _rendre_debug_depuis_capteurs(capteurs)
+                        if version == "journal_v2":
+                            monde = evt.get("monde_canonique") if isinstance(evt.get("monde_canonique"), dict) else {}
+                            largeur = int(monde.get("largeur", 0) or 0)
+                            hauteur = int(monde.get("hauteur", 0) or 0)
 
-                        obs = Observation(
-                            run_id=str(evt.get("run_id") or f"replay:{self.journal_path.name}"),
-                            episode_id=int(evt.get("episode_id", episode_courant)),
-                            tick=int(evt.get("tick", idx_frame)),
-                            capteurs=capteurs,
-                            rendu_debug=rendu_debug,
-                            mesure_bruit=f"REPLAY file={self.journal_path.name} episode={episode_courant} frame={idx_frame} action={evt.get('action')}",
-                            score=int(evt.get("score", 0) or 0),
-                            longueur=int(evt.get("longueur", 0) or 0),
-                            termine=bool(evt.get("termine", False)),
-                            raison_fin=evt.get("raison_fin"),
-                        )
+                            # action (nested)
+                            action = None
+                            dec = evt.get("decision")
+                            if isinstance(dec, dict):
+                                action = dec.get("action")
+
+                            # capteurs: préférer caméra égocentrée si présente
+                            capteurs = []
+                            insts = {}
+                            perc = evt.get("perception")
+                            if isinstance(perc, dict):
+                                insts = perc.get("instruments") or {}
+                            if isinstance(insts, dict):
+                                # ordre de préférence
+                                for inst_id in ["camera_egocentree_v1", "camera_estrade_absolue_v1"]:
+                                    o = insts.get(inst_id)
+                                    if isinstance(o, dict) and o.get("type") == "pixels_npz" and o.get("payload_ref"):
+                                        path_npz = (self.journal_path.parent / str(o["payload_ref"])).resolve()
+                                        if path_npz.exists():
+                                            capteurs = _decoder_capteurs_npz(path_npz)
+                                            break
+                                # sinon: première caméra pixels_npz
+                                if not capteurs:
+                                    for o in insts.values():
+                                        if isinstance(o, dict) and o.get("type") == "pixels_npz" and o.get("payload_ref"):
+                                            path_npz = (self.journal_path.parent / str(o["payload_ref"])).resolve()
+                                            if path_npz.exists():
+                                                capteurs = _decoder_capteurs_npz(path_npz)
+                                                break
+
+                            # fallback: reconstruire depuis monde_canonique
+                            if not capteurs:
+                                capteurs = _capteurs_synthetiques_depuis_monde_canonique(monde)
+
+                            rendu_debug = _rendre_debug_depuis_capteurs(capteurs) if capteurs else []
+
+                            obs = Observation(
+                                run_id=str(evt.get("run_id") or f"replay:{self.journal_path.name}"),
+                                episode_id=int(evt.get("episode_id", episode_courant)),
+                                tick=int(evt.get("tick", idx_frame)),
+                                capteurs=capteurs,
+                                rendu_debug=rendu_debug,
+                                mesure_bruit=f"REPLAY(v2) file={self.journal_path.name} episode={episode_courant} frame={idx_frame} action={_formatter_action_pour_tui(tick=evt.get('tick', idx_frame), action=action)}",
+                                score=int(monde.get("score", 0) or 0),
+                                longueur=int(monde.get("longueur", 0) or 0),
+                                termine=bool(monde.get("termine", False)),
+                                raison_fin=monde.get("raison_fin"),
+                            )
+                        else:
+                            # legacy v1
+                            largeur = int(evt.get("largeur", 0) or 0)
+                            hauteur = int(evt.get("hauteur", 0) or 0)
+                            capteurs_b64 = evt.get("capteurs_compact") or evt.get("capteurs_b64") or evt.get("capteurs")
+                            capteurs = decoder_capteurs_b64(capteurs_b64, largeur=largeur, hauteur=hauteur)
+                            rendu_debug = _rendre_debug_depuis_capteurs(capteurs)
+
+                            obs = Observation(
+                                run_id=str(evt.get("run_id") or f"replay:{self.journal_path.name}"),
+                                episode_id=int(evt.get("episode_id", episode_courant)),
+                                tick=int(evt.get("tick", idx_frame)),
+                                capteurs=capteurs,
+                                rendu_debug=rendu_debug,
+                                mesure_bruit=f"REPLAY file={self.journal_path.name} episode={episode_courant} frame={idx_frame} action={_formatter_action_pour_tui(tick=evt.get('tick', idx_frame), action=evt.get('action'))}",
+                                score=int(evt.get("score", 0)),
+                                longueur=int(evt.get("longueur", 0)),
+                                termine=bool(evt.get("termine", False)),
+                                raison_fin=evt.get("raison_fin"),
+                            )
+
                         self.bus.publier(obs)
                         idx_frame += 1
 
@@ -503,6 +651,12 @@ def construire_source(mode: str, journal_path: Optional[Path] = None) -> tuple[S
         src = SourceReplay(bus, controle, journal_path=journal_path, racine_projet=racine_projet)
         src.start()
         return src, bus, controle
+
+
+    # TUI LIVE: si aucune expérience n'est active, on force le mode manuel
+    # (évite de rejouer un ancien SNAKE_AGENT restant dans l'env).
+    if not (os.getenv("SNAKE_EXPERIENCE") or os.getenv("SNAKE_EXPERIENCE_ID")):
+        os.environ.pop("SNAKE_AGENT", None)
 
     controle = ControleExecution(delai_s=float(os.getenv("SNAKE_TUI_DELai", "0.05")))
     src = SourceLive(bus, controle)

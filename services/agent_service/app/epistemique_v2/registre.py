@@ -4,6 +4,7 @@ import json
 import time
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 from .contrats import RegistreEpistemiqueV2, IndicesEpistemiques, HypotheseV2
 
@@ -25,6 +26,7 @@ def charger_registre(path: Path) -> RegistreEpistemiqueV2 | None:
         sources=dict(d.get("sources", {}) or {}),
         indices=indices,
         hypotheses=hypotheses,
+        concepts_candidates=list(d.get("concepts_candidates", [])),
     )
 
 
@@ -40,6 +42,7 @@ def creer_registre(
     sources: dict[str, str],
     indices: IndicesEpistemiques,
     hypotheses: list[HypotheseV2],
+    concepts_candidates: list[dict[str, Any]] | None = None,
 ) -> RegistreEpistemiqueV2:
     return RegistreEpistemiqueV2(
         version="v2",
@@ -49,4 +52,5 @@ def creer_registre(
         sources=sources,
         indices=indices,
         hypotheses=hypotheses,
+        concepts_candidates=list(concepts_candidates or []),
     )

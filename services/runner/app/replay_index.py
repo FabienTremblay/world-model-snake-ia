@@ -16,6 +16,32 @@ class StatEpisode:
     termine: bool
 
 
+def _extraire_score_longueur_termine(evt: dict[str, Any]) -> tuple[int, int, bool]:
+    """Compat v1/v2.
+
+    v1:
+      - score, longueur, termine au niveau racine
+
+    v2 (journal_v2):
+      - monde_canonique.score / longueur / termine
+    """
+    monde = evt.get("monde_canonique")
+    if isinstance(monde, dict):
+        score = monde.get("score", 0)
+        longueur = monde.get("longueur", 0)
+        termine = monde.get("termine", False)
+        try:
+            return int(score or 0), int(longueur or 0), bool(termine)
+        except Exception:
+            return 0, 0, bool(termine)
+
+    # fallback v1
+    try:
+        return int(evt.get("score", 0) or 0), int(evt.get("longueur", 0) or 0), bool(evt.get("termine", False))
+    except Exception:
+        return 0, 0, bool(evt.get("termine", False))
+
+
 def indexer_episodes(lignes: Iterable[dict[str, Any]], run_id: Optional[str] = None) -> Dict[int, StatEpisode]:
     """
     Indexe un fichier d'épisodes (jsonl déjà décodé en dicts).
@@ -25,10 +51,9 @@ def indexer_episodes(lignes: Iterable[dict[str, Any]], run_id: Optional[str] = N
     - calcule quelques stats de fin
     - filtre optionnellement par run_id
 
-    Le but est de permettre:
-      * sélectionner un épisode parmi des centaines
-      * relire rapidement un épisode précis
-      * afficher des stats par épisode
+    Compat:
+      - journal v1 (legacy)
+      - journal v2 (journal_v2)
     """
     stats: Dict[int, StatEpisode] = {}
     courant: Dict[int, dict[str, Any]] = {}
@@ -41,21 +66,23 @@ def indexer_episodes(lignes: Iterable[dict[str, Any]], run_id: Optional[str] = N
         except Exception:
             continue
 
+        score, longueur, termine = _extraire_score_longueur_termine(evt)
+
         if eid not in courant:
             courant[eid] = {
                 "debut": i,
                 "fin": i,
                 "ticks": 0,
-                "score_final": int(evt.get("score", 0) or 0),
-                "longueur_final": int(evt.get("longueur", 0) or 0),
-                "termine": bool(evt.get("termine", False)),
+                "score_final": score,
+                "longueur_final": longueur,
+                "termine": termine,
             }
         c = courant[eid]
         c["fin"] = i
         c["ticks"] += 1
-        c["score_final"] = int(evt.get("score", c["score_final"]) or 0)
-        c["longueur_final"] = int(evt.get("longueur", c["longueur_final"]) or 0)
-        c["termine"] = bool(evt.get("termine", c["termine"]))
+        c["score_final"] = score
+        c["longueur_final"] = longueur
+        c["termine"] = termine
 
     for eid, c in courant.items():
         stats[eid] = StatEpisode(

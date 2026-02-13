@@ -4,8 +4,14 @@ from .contrats import HypotheseV2, IndicesEpistemiques
 
 
 def inferer_hypotheses(indices: IndicesEpistemiques) -> list[HypotheseV2]:
+    """Infère des hypothèses *épistémiques* (diagnostic + orientation).
+
+    - Diagnostic : latent trop discriminant, biais d'action, etc.
+    - Orientation : exploration faible, stationnaire, revisite.
+    """
     hyps: list[HypotheseV2] = []
 
+    # --- latent ---
     if indices.latents_distincts is not None and indices.ticks > 0:
         ratio = indices.latents_distincts / max(1, indices.ticks)
         if ratio > 0.4:
@@ -18,59 +24,59 @@ def inferer_hypotheses(indices: IndicesEpistemiques) -> list[HypotheseV2]:
                         "ce qui suggère une représentation trop fine (ex: checksum) et donc un support fragmenté."
                     ),
                     confiance=0.7,
+                    evidences={"latents_distincts": indices.latents_distincts, "ticks": indices.ticks, "ratio": ratio},
+                )
+            )
+
+    # --- actions ---
+    if indices.actions:
+        total = sum(indices.actions.values())
+        top = sorted(indices.actions.items(), key=lambda kv: kv[1], reverse=True)[:3]
+        if total > 0 and top and (top[0][1] / total) > 0.65:
+            hyps.append(
+                HypotheseV2(
+                    id="biais_action_fort",
+                    titre="biais fort vers une action",
+                    description=(
+                        "Une action domine nettement la distribution des actions. "
+                        "Cela peut indiquer un agent stationnaire, un bug d'action, ou une gouvernance trop rigide."
+                    ),
+                    confiance=0.6,
+                    evidences={"total": total, "top_actions": top},
+                )
+            )
+
+    # --- métriques (checksum) : exploration / stationnaire ---
+    if indices.metrics_present:
+        if indices.ratio_stationnaire is not None and indices.ratio_stationnaire > 0.2:
+            hyps.append(
+                HypotheseV2(
+                    id="beaucoup_actions_nulles",
+                    titre="beaucoup d'actions sans effet (stationnaire)",
+                    description=(
+                        "Le taux de transitions où l'état ne change pas (checksum == checksum_avant) est élevé. "
+                        "Souvent signe d'actions bloquées, de rebonds, ou de boucles locales."
+                    ),
+                    confiance=0.7,
+                    evidences={"ratio_stationnaire": indices.ratio_stationnaire, "transitions": indices.transitions},
+                )
+            )
+
+        if indices.ratio_revisite_etats is not None and indices.ratio_revisite_etats > 0.8:
+            hyps.append(
+                HypotheseV2(
+                    id="revisite_elevee",
+                    titre="revisite des états très élevée",
+                    description=(
+                        "Proxy simple : 1 - (états uniques / transitions). "
+                        "Si ce ratio est élevé, l'agent revisite massivement les mêmes états (boucles probables)."
+                    ),
+                    confiance=0.65,
                     evidences={
-                        "latents_distincts": indices.latents_distincts,
-                        "ticks": indices.ticks,
-                        "ratio": ratio,
+                        "ratio_revisite": indices.ratio_revisite_etats,
+                        "etats_uniques": indices.etats_uniques,
+                        "transitions": indices.transitions,
                     },
-                    conditions=[
-                        "vérifier le mode latent (checksum vs discret_v1 vs signaux_percus_hash_v1)",
-                        "vérifier le niveau de bruit et la sensibilité du latent",
-                    ],
-                )
-            )
-
-    total_fin = sum(indices.raisons_fin.values())
-    if total_fin >= 10:
-        raison, n = max(indices.raisons_fin.items(), key=lambda kv: kv[1])
-        part = n / total_fin
-        if part >= 0.75:
-            hyps.append(
-                HypotheseV2(
-                    id="raison_fin_dominante",
-                    titre="une seule raison de fin domine",
-                    description=(
-                        "La majorité des épisodes terminent de la même manière. "
-                        "C'est un signal d'un biais (arène, agent, ou capteurs/latent)."
-                    ),
-                    confiance=0.6,
-                    evidences={"raison_fin": raison, "part": part, "total": total_fin},
-                    conditions=[
-                        "inspecter les épisodes correspondants (replay)",
-                        "tester un agent de référence (aléatoire) sur la même arène",
-                    ],
-                )
-            )
-
-    total_actions = sum(indices.actions.values())
-    if total_actions >= 50:
-        action, n = max(indices.actions.items(), key=lambda kv: kv[1])
-        part = n / total_actions
-        if part >= 0.8:
-            hyps.append(
-                HypotheseV2(
-                    id="biais_action",
-                    titre="l'agent utilise massivement une seule action",
-                    description=(
-                        "Une action est choisie dans une proportion très élevée. "
-                        "Cela peut indiquer une politique dégénérée ou un bug de décision."
-                    ),
-                    confiance=0.6,
-                    evidences={"action": action, "part": part, "total": total_actions},
-                    conditions=[
-                        "valider la sortie du choix d'action (mapping)",
-                        "examiner la configuration de l'agent (epsilon, etc.)",
-                    ],
                 )
             )
 

@@ -43,6 +43,16 @@ class IndicesEpistemiques:
     latents_distincts: int | None = None
     latent_top: list[tuple[str, int]] | None = None
 
+    # --- indices dérivés de metrics.jsonl (si disponible) ---
+    metrics_present: bool = False
+    transitions: int | None = None
+    etats_uniques: int | None = None
+    ratio_revisite_etats: float | None = None
+    ratio_stationnaire: float | None = None
+    entropie_actions: float | None = None
+    actions_nulles_top: list[tuple[str, int]] | None = None  # clé = "etat|action"
+    transitions_top: list[tuple[str, int]] | None = None     # clé = "etat|action|etat2"
+
 
 @dataclass(frozen=True)
 class HypotheseV2:
@@ -68,3 +78,7 @@ class RegistreEpistemiqueV2:
     sources: dict[str, str] = field(default_factory=dict)
     indices: Optional[IndicesEpistemiques] = None
     hypotheses: list[HypotheseV2] = field(default_factory=list)
+
+    # Concepts candidats (instillables) produits par l'observateur à partir des traces.
+    # Format volontairement simple (liste de dict) pour rester souple et évolutif.
+    concepts_candidates: list[dict[str, Any]] = field(default_factory=list)

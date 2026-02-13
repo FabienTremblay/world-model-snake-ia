@@ -40,6 +40,7 @@ def main() -> None:
         path_sortie_registre=res.registre_path,
         sources=sources,
         mode_latent=res.mode_latent,
+        path_metrics=res.metrics_path,
     )
 
     print(f"[epistemique_v2] expérience={res.bac.experience_id} run={res.run_nom}")

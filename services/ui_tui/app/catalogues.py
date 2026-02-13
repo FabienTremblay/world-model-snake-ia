@@ -109,7 +109,14 @@ def preparer_bac_a_sable(racine: Path, experience_id: str) -> tuple[BacASableV1,
 
 
 def lister_journaux_replay(racine: Path, experience_id: Optional[str]) -> list[Path]:
-    """Liste des journaux jsonl candidats au replay, du plus récent au plus ancien."""
+    """Liste des journaux jsonl candidats au replay, du plus récent au plus ancien.
+
+    Règle (Option A):
+      - préférer les journaux canoniques:
+          * journal.jsonl (v2)
+          * journal_episodes.jsonl (legacy v1)
+      - éviter de proposer les artefacts auxiliaires (datasets, exports, etc.)
+    """
     candidats: list[Path] = []
 
     if experience_id:
@@ -119,8 +126,22 @@ def lister_journaux_replay(racine: Path, experience_id: Optional[str]) -> list[P
             for run in sorted(runs_dir.iterdir(), reverse=True):
                 if not run.is_dir():
                     continue
-                for fp in sorted(run.glob("*.jsonl"), reverse=True):
-                    candidats.append(fp)
+
+                # canoniques
+                p_v2 = run / "journal.jsonl"
+                p_v1 = run / "journal_episodes.jsonl"
+                if p_v2.exists():
+                    candidats.append(p_v2)
+                    continue
+                if p_v1.exists():
+                    candidats.append(p_v1)
+                    continue
+
+                # fallback prudent: un seul jsonl "principal" s'il existe
+                # (on évite de polluer le menu avec tous les jsonl)
+                autres = [p for p in run.glob("*.jsonl") if p.is_file()]
+                if autres:
+                    candidats.append(sorted(autres, reverse=True)[0])
 
     fp_global = racine / "artefacts" / "episodes.jsonl"
     if fp_global.exists():
@@ -133,6 +154,7 @@ def lister_journaux_replay(racine: Path, experience_id: Optional[str]) -> list[P
             uniq.append(p)
             seen.add(p)
     return uniq
+
 
 # NOTE: parsing YAML volontairement minimal (top-level key: value)
 
