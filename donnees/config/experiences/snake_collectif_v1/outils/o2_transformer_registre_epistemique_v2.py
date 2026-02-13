@@ -39,6 +39,24 @@ def _charger_registre(registre_path: Path | None, run_dir: Path | None) -> Dict[
         if c.exists() and c.is_file():
             return json.loads(c.read_text(encoding="utf-8"))
 
+    # mode dégradé : on laisse la démo/pipeline avancer même si sai-a106 n'a
+    # pas encore produit le fichier. la correction structurelle reste :
+    # créer/produire <run-dir>/registre_epistemique_v2.json.
+    # dégradation contrôlée :
+    # pour la recette de snake_collectif_v1, on peut lancer o2 même si sai-a106 n’a pas encore
+    # produit le fichier registre_epistemique_v2.json. dans ce cas, on préfère émettre 0 proposition
+    # plutôt que de bloquer le pipeline.
+    if run_dir and not registre_path:
+        print("[WARN] registre_epistemique_v2.json introuvable dans run-dir; O2 émet 0 proposition.")
+        print("       (Rappel: SAI-A106 est responsable de produire ce fichier, même vide.)")
+        return {
+            "run_dir": str(run_dir),
+            "indices": {"episodes": 0},
+            "actions": {},
+            "raisons_fin": {},
+            "concepts_candidates": [],
+        }
+
     msg = ["Registre introuvable."]
     if registre_path:
         msg.append(f"- demandé: {registre_path}")

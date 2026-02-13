@@ -2,27 +2,24 @@ from __future__ import annotations
 
 """Agent "fourmi" pour la campagne snake_collectif_v1.
 
-Correction importante:
-- Le moteur journalise et attend des actions texte: "haut|bas|gauche|droite".
-  (cf. journal.jsonl / metrics.jsonl).
-- On s'aligne donc sur ce vocabulaire (et plus N/E/S/W).
+Objectif : produire un journal "riche" et reproductible, utile aux observateurs.
 
-Objectif (phase de démonstration) :
-- exploiter gps + caméra égocentrée pour explorer et éviter les boucles
-- laisser une "trace" interne (phéromones / dernières visites)
-- produire un comportement reproductible (seed)
+Contraintes :
+- l'agent en arène ne code pas en dur des "concepts".
+- il fournit surtout de l'expérience (exploration) pour alimenter le registre.
+
+Actions : respect du contrat ActionSnake (avant / observer_gauche / observer_droite).
 """
 
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple, Optional
 
 from agent_service.app.contrats_agents import ContexteDecision, IAgentArene
+from commun.actions_snake import ActionSnake
 from commun.contrats import Pixel
 from instrument.app.contrats import ObservationDonnees, ObservationPixels
 from world_sim.app.arenes_yaml import PALETTE_DEFAUT
 
-
-Action = str
 Position = Tuple[int, int]
 
 
@@ -99,7 +96,6 @@ class ParamsFourmi:
     penalite_demi_tour: float = 0.25
     epsilon: float = 0.02
 
-
 class AgentSnakeCollectifV1Fourmi(IAgentArene):
     id_agent = "snake_collectif_v1_fourmi"
 
@@ -143,7 +139,7 @@ class AgentSnakeCollectifV1Fourmi(IAgentArene):
             raise TypeError(f"camera_egocentree_v1 attendu ObservationPixels, reçu {type(obs)}")
         return obs.pixels
 
-    def choisir_action(self, contexte: ContexteDecision) -> str:
+    def choisir_action(self, contexte: ContexteDecision) -> ActionSnake:
         pos = self._extraire_position(contexte)
         patch = self._extraire_patch_camera(contexte)
 
@@ -156,11 +152,18 @@ class AgentSnakeCollectifV1Fourmi(IAgentArene):
 
         self._dernier_tick_visite[pos] = int(contexte.tick)
 
-        actions = ["haut", "droite", "bas", "gauche"]
+        actions = [ActionSnake.AVANT, ActionSnake.OBSERVER_GAUCHE, ActionSnake.OBSERVER_DROITE]
 
         if self.rng.random() < self.params.epsilon:
+            # petite exploration aléatoire
             self._position_precedente = pos
-            return self.rng.choice(actions)
+            a = self.rng.choice(actions)
+            # met à jour l'orientation interne si on tourne
+            if a == ActionSnake.OBSERVER_GAUCHE:
+                self._dir_precedente = _gauche(dir_actuelle)
+            elif a == ActionSnake.OBSERVER_DROITE:
+                self._dir_precedente = _droite(dir_actuelle)
+            return a
 
         palette = PALETTE_DEFAUT
         obstacles = {palette.mur, palette.serpent_corps, palette.serpent_tete, palette.porte_fermee}
@@ -171,35 +174,44 @@ class AgentSnakeCollectifV1Fourmi(IAgentArene):
         def est_nourriture(px: Pixel) -> bool:
             return _egal_pixel(px, palette.nourriture)
 
-        scores: Dict[str, float] = {}
-        admissibles: list[str] = []
+        # On évalue 3 options relatives : AVANT, tourner gauche, tourner droite.
+        # Pour un tournant, on "projette" la case qui serait devant après la rotation,
+        # mais l'action du tick ne bouge pas : elle ne fait qu'orienter.
+        def score_action(a: ActionSnake) -> float:
+            if a == ActionSnake.AVANT:
+                dir_proj = dir_actuelle
+                px = _pixel_cible(patch, "avant")
+                if est_obstacle(px):
+                    return -1e18
+            elif a == ActionSnake.OBSERVER_GAUCHE:
+                dir_proj = _gauche(dir_actuelle)
+                px = _pixel_cible(patch, "gauche")
+                if est_obstacle(px):
+                    return -1e18
+            else:
+                dir_proj = _droite(dir_actuelle)
+                px = _pixel_cible(patch, "droite")
+                if est_obstacle(px):
+                    return -1e18
 
-        for a in actions:
-            dv = _vecteur_depuis_action(a)
-            rel = _relatif(dv, dir_actuelle) or "avant"
-            px = _pixel_cible(patch, rel)
-            if est_obstacle(px):
-                continue
-
-            admissibles.append(a)
-
-            pos_suiv = (pos[0] + dv[0], pos[1] + dv[1])
+            pos_suiv = (pos[0] + dir_proj[0], pos[1] + dir_proj[1])
             dernier = self._dernier_tick_visite.get(pos_suiv)
             nouveaute = 1.0 if dernier is None else max(0.0, float(contexte.tick - dernier))
 
             score = self.params.poids_nouveaute * nouveaute
             if est_nourriture(px):
                 score += self.params.bonus_nourriture
-            if dv == (-dir_actuelle[0], -dir_actuelle[1]):
-                score -= self.params.penalite_demi_tour
-
+            # évite les oscillations inutiles
+            if a != ActionSnake.AVANT:
+                score -= 0.05
             score += self.rng.random() * 0.001
-            scores[a] = score
+            return score
 
-        if not admissibles:
-            self._position_precedente = pos
-            return self.rng.choice(actions)
-
-        best = max(admissibles, key=lambda a: scores.get(a, -1e9))
+        best = max(actions, key=score_action)
         self._position_precedente = pos
+        if best == ActionSnake.OBSERVER_GAUCHE:
+            self._dir_precedente = _gauche(dir_actuelle)
+        elif best == ActionSnake.OBSERVER_DROITE:
+            self._dir_precedente = _droite(dir_actuelle)
+        # AVANT: l'orientation interne se mettra à jour via le gps au tick suivant
         return best

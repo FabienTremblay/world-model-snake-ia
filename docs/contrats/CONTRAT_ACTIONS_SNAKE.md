@@ -14,8 +14,8 @@ pour snake (agents incarnés en arène), l’action est un identifiant **relatif
 | identifiant | sens |
 |---|---|
 | `avant` | avancer d’une case dans la direction actuelle |
-| `observer_gauche` | tourner à gauche (relative) puis avancer |
-| `observer_droite` | tourner à droite (relative) puis avancer |
+| `observer_gauche` | tourner à gauche (relative, sans avancer) |
+| `observer_droite` | tourner à droite (relative, sans avancer) |
 
 ces valeurs sont définies dans : `services/commun/actions_snake.py`.
 

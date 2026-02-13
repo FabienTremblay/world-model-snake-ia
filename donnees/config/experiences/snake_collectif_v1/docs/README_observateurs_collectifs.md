@@ -3,6 +3,11 @@
 Ces outils vivent **dans l'expérience** (pas dans les scripts du repo) pour éviter
 la pollution de la racine.
 
+**référence recette complète** : voir `docs/pipeline_observateurs_collectifs.md`.
+
+**pré-requis actions** : les journaux doivent utiliser les actions canoniques du contrat
+`docs/contrats/CONTRAT_ACTIONS_SNAKE.md` (sinon o1 ignore les actions et ne détecte rien).
+
 ## 1) O1 — Surprise de transition
 
 Exécuter sur tous les runs d'une expérience:
