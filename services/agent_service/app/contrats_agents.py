@@ -17,8 +17,10 @@ from typing import Any, Protocol, Dict
 
 from instrument.app.contrats import ObservationInstrument
 
+# NOTE: La norme d'actions Snake est définie dans `services/commun/actions_snake.py`
+# et documentée dans `docs/contrats/CONTRAT_ACTIONS_SNAKE.md`.
 
-Action = str
+from commun.actions_snake import ActionSnake as Action
 
 
 @dataclass(frozen=True)
