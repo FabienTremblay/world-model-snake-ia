@@ -59,7 +59,7 @@ def _formatter_action_pour_tui(*, tick: int, action: Any) -> str:
     """Rend l'action conforme au contrat de journalisation.
 
     - tick 0: snapshot initial -> (snapshot) si action absente/null
-    - action inconnue: "non supportée:<action>"
+    - action inconnue: "⚠ hors_norme:<action>" (tolérant, mais visible)
     """
     try:
         tick_i = int(tick)
@@ -78,8 +78,39 @@ def _formatter_action_pour_tui(*, tick: int, action: Any) -> str:
 
     if a in _ACTIONS_SUPPORTEES_TUI:
         return a
+    return f"⚠ hors_norme:{a}"
 
-    return f"non supportée:{a}"
+
+def _inferer_version_evt(evt: dict) -> str:
+    """Infère la version de journal à partir des clés présentes.
+
+    Objectif: être tolérant (pas de champ version obligatoire), mais fournir un diagnostic.
+    """
+    if not isinstance(evt, dict):
+        return "inconnu"
+    # v2: structure canonique
+    if isinstance(evt.get("monde_canonique"), dict) or isinstance(evt.get("decision"), dict) or isinstance(evt.get("perception"), dict):
+        return "v2"
+    # v1: capteurs b64 + dimensions
+    if "capteurs_compact" in evt or "capteurs_b64" in evt or "format_capteurs" in evt or "largeur" in evt or "hauteur" in evt:
+        return "v1"
+    return "inconnu"
+
+
+def _extraire_action_evt(evt: dict) -> Any:
+    """Extrait l'action du tick, compat v1/v2.
+
+    v1: evt["action"]
+    v2: evt["decision"]["action"] (si présent)
+    """
+    if not isinstance(evt, dict):
+        return None
+    if "action" in evt:
+        return evt.get("action")
+    dec = evt.get("decision")
+    if isinstance(dec, dict) and "action" in dec:
+        return dec.get("action")
+    return None
 
 # --- Décodage journal v2 (Option A) -------------------------------------------
 
@@ -224,37 +255,8 @@ class SourceLive:
     # --- API UI: orientation -------------------------------------------------
 
     def direction_pour(self, *, episode_id: int, tick: int) -> Optional[str]:
-        """Retourne une direction exploitable pour le rendu orienté (REPLAY).
-
-        On ne touche pas aux capteurs. En mode replay, la seule source stable
-        et non-heuristique est l'événement du journal pour (episode_id, tick).
-
-        Convention: si `action` vaut une direction cardinale (haut/bas/gauche/droite),
-        on peut l'utiliser comme direction courante pour l'affichage.
-
-        Si la direction est absente/inconnue, retourne None.
-        """
-        try:
-            eid = int(episode_id)
-            tk = int(tick)
-        except Exception:
-            return None
-
-        tick_map = self._tick_map_par_episode.get(eid) or {}
-        evt = tick_map.get(tk) or {}
-        d = (evt.get("action") or "").strip()
-        if d in {"haut", "bas", "gauche", "droite"}:
-            return d
+        """LIVE: pas de reconstruction de direction depuis journal."""
         return None
-
-    def journal_recent(self, n: int = 8) -> list[Any]:
-        return []
-
-    def erreur(self) -> Optional[str]:
-        return self._erreur
-
-    def stop(self) -> None:
-        return
 
 class SourceReplay:
     def __init__(self, bus: BusEtatMemoire, controle: ControleExecution, journal_path: Path, racine_projet: Path) -> None:
@@ -270,6 +272,7 @@ class SourceReplay:
         self._evenements_par_episode: dict[int, list[dict]] = {}
         self._tick_map_par_episode: dict[int, dict[int, dict]] = {}
         self._direction_map_par_episode: dict[int, dict[int, str]] = {}
+        self._diag_fichier_multi_run: Optional[str] = None
 
 
         # Charger/indexer le journal UNE SEULE FOIS, ici.
@@ -278,6 +281,25 @@ class SourceReplay:
             if self.journal_path.exists():
                 lignes = list(_lire_jsonl(self.journal_path))
                 run_id = os.getenv("SNAKE_RUN_ID", "").strip() or None
+
+                # --- auto-filtrage si fichier multi-run ---
+                if run_id is None and lignes:
+                    from collections import Counter
+
+                    runs = [
+                        str(e.get("run_id"))
+                        for e in lignes
+                        if e.get("run_id") is not None
+                    ]
+
+                    if runs:
+                        c = Counter(runs)
+                        if len(c) > 1:
+                            run_id = c.most_common(1)[0][0]
+                            self._diag_fichier_multi_run = (
+                                f"⚠ fichier multi-run ({len(c)} runs). run_id auto={run_id}"
+                            )
+
                 rep = Replay(lignes, run_id=run_id)
                 stats = rep.episodes() or {}
                 self._replay_session = ReplaySession(
@@ -314,6 +336,23 @@ class SourceReplay:
                 # Calcul direction (UI) : déterministe, basé sur les actions, sans capteurs.
                 for eid in self._tick_map_par_episode.keys():
                     self._direction_map_par_episode[eid] = self._calculer_directions_episode(eid)
+# Diagnostics: actions hors norme + version détectée (par épisode)
+                self._diagnostic_actions_hors_norme: dict[int, dict[str, int]] = {}
+                self._version_detectee_par_episode: dict[int, str] = {}
+                for eid, tick_map in self._tick_map_par_episode.items():
+                    c = {}
+                    version_ep = "inconnu"
+                    for _tk, e in (tick_map or {}).items():
+                        version_ep = version_ep if version_ep != "inconnu" else _inferer_version_evt(e)
+                        a = _extraire_action_evt(e)
+                        txt = _formatter_action_pour_tui(tick=int(_tk), action=a)
+                        if txt.startswith("⚠ hors_norme:"):
+                            key = txt.split(":", 1)[1] if ":" in txt else str(a)
+                            c[key] = int(c.get(key, 0)) + 1
+                    if c:
+                        self._diagnostic_actions_hors_norme[int(eid)] = c
+                    self._version_detectee_par_episode[int(eid)] = version_ep
+
         except Exception:
             # Cache non critique: ignorer
             pass
@@ -349,7 +388,7 @@ class SourceReplay:
         out: dict[int, str] = {}
         for tk in ticks:
             evt = (self._tick_map_par_episode.get(int(episode_id)) or {}).get(tk) or {}
-            action = (evt.get("action") or "").strip()
+            action = str(_extraire_action_evt(evt) or "").strip()
             if tk == 0:
                 out[tk] = direction
                 continue
@@ -444,17 +483,15 @@ class SourceReplay:
                                 break
                         # --- compat replay v1/v2 -------------------------------------------------
                         version = str(evt.get("version") or "").strip()
+                        est_v2 = (version == "journal_v2") or (_inferer_version_evt(evt) == "v2")
 
-                        if version == "journal_v2":
+                        if est_v2:
                             monde = evt.get("monde_canonique") if isinstance(evt.get("monde_canonique"), dict) else {}
                             largeur = int(monde.get("largeur", 0) or 0)
                             hauteur = int(monde.get("hauteur", 0) or 0)
 
                             # action (nested)
-                            action = None
-                            dec = evt.get("decision")
-                            if isinstance(dec, dict):
-                                action = dec.get("action")
+                            action = _extraire_action_evt(evt)
 
                             # capteurs: préférer caméra égocentrée si présente
                             capteurs = []
@@ -512,7 +549,7 @@ class SourceReplay:
                                 tick=int(evt.get("tick", idx_frame)),
                                 capteurs=capteurs,
                                 rendu_debug=rendu_debug,
-                                mesure_bruit=f"REPLAY file={self.journal_path.name} episode={episode_courant} frame={idx_frame} action={_formatter_action_pour_tui(tick=evt.get('tick', idx_frame), action=evt.get('action'))}",
+                                mesure_bruit=f"REPLAY file={self.journal_path.name} episode={episode_courant} frame={idx_frame} action={_formatter_action_pour_tui(tick=evt.get('tick', idx_frame), action=_extraire_action_evt(evt))}",
                                 score=int(evt.get("score", 0)),
                                 longueur=int(evt.get("longueur", 0)),
                                 termine=bool(evt.get("termine", False)),
@@ -619,9 +656,24 @@ class SourceReplay:
         fenetre = ticks_dispos[debut:fin]
 
         lignes: list[str] = []
+
+        # Diagnostic: fichier multi-run (si auto-filtré)
+        if getattr(self, "_diag_fichier_multi_run", None):
+            lignes.append(str(self._diag_fichier_multi_run))
+
+        # Diagnostics: actions hors norme (tolérant, mais visible)
+        hors = getattr(self, "_diagnostic_actions_hors_norme", {}).get(int(eid), {})
+        if hors:
+            details = ", ".join(f"{k}×{v}" for k, v in sorted(hors.items(), key=lambda kv: (-kv[1], kv[0]))[:6])
+            lignes.append(f"⚠ actions hors norme (ép {eid}): {details}")
+
+        # Diagnostic: version détectée (heuristique)
+        ver = getattr(self, "_version_detectee_par_episode", {}).get(int(eid), "inconnu")
+        if ver != "inconnu":
+            lignes.append(f"(journal {ver})")
         for tk in fenetre:
             e = tick_map.get(tk) or {}
-            action_txt = _formatter_action_pour_tui(tick=int(tk), action=e.get("action"))
+            action_txt = _formatter_action_pour_tui(tick=int(tk), action=_extraire_action_evt(e))
             sel = "→" if int(tk) == int(tk_courant) else " "
             score = int(e.get("score", 0) or 0)
             longu = int(e.get("longueur", 0) or 0)
