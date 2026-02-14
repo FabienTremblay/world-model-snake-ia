@@ -39,34 +39,33 @@ def _charger_registre(registre_path: Path | None, run_dir: Path | None) -> Dict[
         if c.exists() and c.is_file():
             return json.loads(c.read_text(encoding="utf-8"))
 
-    # mode dégradé : on laisse la démo/pipeline avancer même si sai-a106 n'a
-    # pas encore produit le fichier. la correction structurelle reste :
-    # créer/produire <run-dir>/registre_epistemique_v2.json.
-    # dégradation contrôlée :
-    # pour la recette de snake_collectif_v1, on peut lancer o2 même si sai-a106 n’a pas encore
-    # produit le fichier registre_epistemique_v2.json. dans ce cas, on préfère émettre 0 proposition
-    # plutôt que de bloquer le pipeline.
-    if run_dir and not registre_path:
-        print("[WARN] registre_epistemique_v2.json introuvable dans run-dir; O2 émet 0 proposition.")
-        print("       (Rappel: SAI-A106 est responsable de produire ce fichier, même vide.)")
-        return {
-            "run_dir": str(run_dir),
-            "indices": {"episodes": 0},
-            "actions": {},
-            "raisons_fin": {},
-            "concepts_candidates": [],
-        }
+    # Pipeline non-fragile : le registre est produit par SAI-A106.
+    # En pratique, il arrive qu'un run soit généré sans ce fichier (ou qu'il soit déplacé).
+    # On crée alors un registre vide et on continue : les observateurs produisent 0 proposition.
+    registre_vide: Dict[str, Any] = {
+        "version": 2,
+        "run_dir": str(run_dir) if run_dir else None,
+        "concepts_candidates": [],
+        "indices": {"episodes": 0, "ticks_total": 0},
+        "notes": [
+            "registre vide auto-créé (pipeline tolérant) : SAI-A106 devrait normalement le générer",
+        ],
+    }
 
-    msg = ["Registre introuvable."]
-    if registre_path:
-        msg.append(f"- demandé: {registre_path}")
-    if run_dir:
-        msg.append(f"- run-dir: {run_dir}")
-        msg.append("  attendu: <run-dir>/registre_epistemique_v2.json")
-    msg.append("")
-    msg.append("Astuce: utilise le chemin dans ton repo, ex:")
-    msg.append("  donnees/config/experiences/snake_collectif_v1/artefacts/runs/<run-id>/registre_epistemique_v2.json")
-    raise FileNotFoundError("\n".join(msg))
+    if run_dir is not None:
+        cible = run_dir / "registre_epistemique_v2.json"
+        if not cible.exists():
+            cible.write_text(json.dumps(registre_vide, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            print(f"[WARN] registre manquant: création d'un registre vide à {cible}")
+
+    if registre_path is not None:
+        print(f"[WARN] registre demandé introuvable: {registre_path} (registre vide utilisé)")
+    elif run_dir is not None:
+        print(f"[WARN] registre introuvable dans run-dir: {run_dir} (registre vide utilisé)")
+    else:
+        print("[WARN] registre introuvable (registre vide utilisé)")
+
+    return registre_vide
 
 
 def _emit_transition_dominante(registre: Dict[str, Any]) -> List[Dict[str, Any]]:

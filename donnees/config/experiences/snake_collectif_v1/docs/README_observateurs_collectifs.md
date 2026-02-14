@@ -1,41 +1,29 @@
-# Outils — observateurs collectifs (snake_collectif_v1)
+# observateurs collectifs (snake_collectif_v1)
 
-Ces outils vivent **dans l'expérience** (pas dans les scripts du repo) pour éviter
-la pollution de la racine.
+Ce dossier documente les observateurs utilisés pour construire un registre épistémique collectif.
 
-**référence recette complète** : voir `docs/pipeline_observateurs_collectifs.md`.
+## composants
 
-**pré-requis actions** : les journaux doivent utiliser les actions canoniques du contrat
-`docs/contrats/CONTRAT_ACTIONS_SNAKE.md` (sinon o1 ignore les actions et ne détecte rien).
+### o2_transformer_registre_epistemique_v2.py (O2)
 
-## 1) O1 — Surprise de transition
+- rôle : transformer `registre_epistemique_v2.json` (produit par SAI-A106) en propositions JSONL.
+- robustesse : si le registre est manquant, le pipeline crée un registre vide (mais A106 reste responsable).
 
-Exécuter sur tous les runs d'une expérience:
+### o1_observateur_surprise_v1.py (O1)
 
-```bash
-python donnees/config/experiences/snake_collectif_v1/outils/o1_observateur_surprise_v1.py \
-  --runs-root donnees/config/experiences/snake_collectif_v1/artefacts/runs \
-  --sortie donnees/config/experiences/snake_collectif_v1/artefacts/registres/observateur_o1_surprise_v1.jsonl
+- rôle : produire des propositions de type "surprise" à partir de `journal.jsonl` et `metrics.jsonl`.
+- remarque : si l'état est trop stable (ou trop complet/déterministe), O1 peut produire 0 proposition.
+
+### conventionneur_v1.py
+
+- rôle : fusionner plusieurs flux de propositions JSONL en un registre collectif unique.
+
+## pipeline recommandé
+
+Voir `docs/pipeline_registre_collectif.md` et lancer :
+
+```
+bash donnees/config/experiences/snake_collectif_v1/outils/pipeline_registre_collectif_v1.sh
 ```
 
-## 2) O2 — Transformer registre epistemique_v2 en propositions
-
-```bash
-python donnees/config/experiences/snake_collectif_v1/outils/o2_transformer_registre_epistemique_v2.py \
-  --registre donnees/config/experiences/snake_collectif_v1/artefacts/runs/<run_id>/registre_epistemique_v2.json \
-  --sortie donnees/config/experiences/snake_collectif_v1/artefacts/registres/observateur_o2_epistemique_v2.jsonl
-```
-
-## 3) Conventionneur
-
-```bash
-python donnees/config/experiences/snake_collectif_v1/outils/conventionneur_v1.py \
-  --entrees \
-    donnees/config/experiences/snake_collectif_v1/artefacts/registres/observateur_o1_surprise_v1.jsonl \
-    donnees/config/experiences/snake_collectif_v1/artefacts/registres/observateur_o2_epistemique_v2.jsonl \
-  --sortie donnees/config/experiences/snake_collectif_v1/artefacts/registres/registre_epistemique_collectif.jsonl
-```
-
-## Notes
-- Le conventionneur v1 reste volontairement simple (dédoublonnage exact).
-- On pourra raffiner vers une "convention" (canonisation d'IDs, regroupements, conflits).
+Le pipeline exécute O1 à **plusieurs granularités** (`prefix-bits`) afin de capter des surprises à différentes échelles.

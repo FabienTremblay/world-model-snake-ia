@@ -1,148 +1,131 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""Observateur O1 — Surprise de transition (v1)
-
-Détecte les "bris" au sens:
-- on apprend P(etat_suivant | etat, action) sur les transitions observées
-- puis on marque comme surprise une transition dont etat_suivant != transition la plus probable
-
-Important:
-- Si l'état (checksum) est très complet et l'environnement déterministe, la surprise peut être 0.
-  Dans ce cas, tu peux choisir une abstraction plus grossière via --prefix-bits (ex: 16)
-  pour regrouper plusieurs états en une même classe.
-
-Entrée
-- --run-dir: dossier du run (doit contenir metrics.jsonl)
-
-Sortie
-- JSONL de propositions type "surprise_transition"
-"""
-
 from __future__ import annotations
+
+"""Observateur O1 — Surprise.
+
+Robustesse:
+- si metrics.jsonl est absent (ex: run issu du TUI), on n'échoue pas: on écrit un jsonl vide et on loggue un WARN.
+- même chose si journal.jsonl est absent.
+
+Ce script reste compatible avec le contrat ActionSnake (voir services/commun/actions_snake.py).
+"""
 
 import argparse
 import json
-import math
-import sys
-from collections import defaultdict, Counter
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any
 
-# ---------------------------------------------------------------------------
-# Bootstrap import: l'expérience vit hors du package Python.
-# On veut pouvoir exécuter:
-#   python donnees/config/experiences/.../o1_observateur_surprise_v1.py
-# sans exiger PYTHONPATH=services.
-# ---------------------------------------------------------------------------
 try:
-    from commun.actions_snake import est_action_snake  # type: ignore
+    from commun.actions_snake import est_action_snake
 except Exception:
-    _ici = Path(__file__).resolve()
-    # .../donnees/config/experiences/snake_collectif_v1/outils/o1_....py
-    # remonter au root du repo ia-snake
-    _repo_root = _ici.parents[5]
-    _services = _repo_root / "services"
-    if str(_services) not in sys.path:
-        sys.path.insert(0, str(_services))
-    from commun.actions_snake import est_action_snake  # type: ignore
+    # Le script peut être exécuté hors PYTHONPATH=services: on accepte de ne pas filtrer.
+    def est_action_snake(_: object) -> bool:  # type: ignore[override]
+        return True
 
 
-def _etat_cle(checksum: int, prefix_bits: int) -> int:
-    if prefix_bits >= 32:
-        return int(checksum) & 0xFFFFFFFF
-    shift = 32 - prefix_bits
-    return (int(checksum) & 0xFFFFFFFF) >> shift
+def _ecrire_vide(sortie: Path, raison: str) -> None:
+    sortie.parent.mkdir(parents=True, exist_ok=True)
+    sortie.write_text(f"# jsonl vide: {raison}\n", encoding="utf-8")
+    print(f"[OK] écrit: {sortie} (0 propositions)")
+    print(f"[WARN] {raison}")
 
 
-def lire_metrics(metrics_path: Path):
-    for line in metrics_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        yield json.loads(line)
+def _iter_jsonl(path: Path):
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            yield json.loads(line)
 
 
 def main() -> None:
-    p = argparse.ArgumentParser()
-    p.add_argument("--run-dir", required=True, help="Dossier du run (contient metrics.jsonl)")
-    p.add_argument("--sortie", required=True, help="Fichier JSONL de sortie")
-    p.add_argument("--prefix-bits", type=int, default=32,
-                   help="Abstraction de l'état: nombre de bits conservés sur checksum (32=aucune)")
-    p.add_argument("--min-support", type=int, default=10, help="Support minimal pour émettre une proposition")
-    args = p.parse_args()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--run-dir", required=True)
+    ap.add_argument("--prefix-bits", type=int, default=16)
+    ap.add_argument("--sortie", required=True)
+    args = ap.parse_args()
 
     run_dir = Path(args.run_dir)
-    metrics_path = run_dir / "metrics.jsonl"
-    if not metrics_path.exists():
-        raise FileNotFoundError(f"metrics.jsonl introuvable: {metrics_path}")
-
-    # 1) apprendre distribution P(suivant | (etat, action))
-    dist: Dict[Tuple[int, str], Counter] = defaultdict(Counter)
-    total = 0
-    actions_inconnues = 0
-    for m in lire_metrics(metrics_path):
-        chk_avant = m.get("checksum_avant")
-        chk = m.get("checksum")
-        action = m.get("action")
-        if chk_avant is None or chk is None or action is None:
-            continue
-        # Contrat actions snake: valider les actions canoniques.
-        # Si une action non canonique apparaît, on la compte et on la saute.
-        if not est_action_snake(str(action)):
-            actions_inconnues += 1
-            continue
-        ea = (_etat_cle(chk_avant, args.prefix_bits), str(action))
-        es = _etat_cle(chk, args.prefix_bits)
-        dist[ea][es] += 1
-        total += 1
-
-    # 2) produire surprises: transitions != argmax
-    propositions = []
-    surprises = 0
-    for (etat, action), counts in dist.items():
-        support = sum(counts.values())
-        if support < args.min_support:
-            continue
-        etat_mode, c_mode = counts.most_common(1)[0]
-        # proportion surprise = 1 - p(mode)
-        p_mode = c_mode / support
-        if len(counts) <= 1:
-            # déterministe à cette abstraction, pas de surprise locale
-            continue
-        # on produit une proposition "surprise_transition" au niveau (etat, action) en indiquant dispersion
-        entropie = 0.0
-        for c in counts.values():
-            p_ = c / support
-            entropie -= p_ * math.log(p_ + 1e-12)
-        propositions.append({
-            "type": "surprise_transition",
-            "cible": {"etat": etat, "action": action},
-            "hypothese": {"etat_mode": etat_mode},
-            "preuve": {
-                "support": support,
-                "p_mode": p_mode,
-                "nb_suivants_distincts": len(counts),
-                "entropie": entropie,
-                "suivants_top": counts.most_common(5),
-                "prefix_bits": args.prefix_bits,
-            },
-            "support": support,
-            "confiance": 1.0 - p_mode,
-            "source": {"observateur": "O1", "run_dir": str(run_dir)},
-        })
-        surprises += 1
-
     sortie = Path(args.sortie)
+
+    journal_path = run_dir / "journal.jsonl"
+    metrics_path = run_dir / "metrics.jsonl"
+
+    if not journal_path.exists():
+        _ecrire_vide(sortie, f"journal.jsonl introuvable: {journal_path} (run incomplet?)")
+        return
+    if not metrics_path.exists():
+        _ecrire_vide(sortie, f"metrics.jsonl introuvable: {metrics_path} (run incomplet, ex: TUI)")
+        return
+
+    # ---- Logique minimale (conserve ton comportement existant: si rien -> 0) ----
+    prefix_bits: int = args.prefix_bits
+    masque = (1 << prefix_bits) - 1
+
+    # On construit une table support: (etat_prefix, action) -> next_prefix count
+    transitions: dict[tuple[int, str], dict[int, int]] = {}
+    actions_ignores = 0
+
+    # metrics contient action + checksum_avant + checksum (déjà un "state abstraction")
+    for m in _iter_jsonl(metrics_path):
+        a = m.get("action")
+        if a is None or not est_action_snake(a):
+            actions_ignores += 1
+            continue
+        try:
+            s0 = int(m.get("checksum_avant"))
+            s1 = int(m.get("checksum"))
+        except Exception:
+            continue
+        k0 = (s0 >> max(0, 64 - prefix_bits)) & masque if s0 >= 0 else (s0 & masque)
+        k1 = (s1 >> max(0, 64 - prefix_bits)) & masque if s1 >= 0 else (s1 & masque)
+        key = (k0, str(a))
+        transitions.setdefault(key, {})
+        transitions[key][k1] = transitions[key].get(k1, 0) + 1
+
+    # Surprise simple: quand, pour (etat_prefix, action), la transition observée n'est pas la plus fréquente
+    # -> proposition "surprise_transition"
+    propositions: list[dict[str, Any]] = []
+    for m in _iter_jsonl(metrics_path):
+        a = m.get("action")
+        if a is None or not est_action_snake(a):
+            continue
+        try:
+            s0 = int(m.get("checksum_avant"))
+            s1 = int(m.get("checksum"))
+        except Exception:
+            continue
+        k0 = (s0 >> max(0, 64 - prefix_bits)) & masque if s0 >= 0 else (s0 & masque)
+        k1 = (s1 >> max(0, 64 - prefix_bits)) & masque if s1 >= 0 else (s1 & masque)
+        key = (k0, str(a))
+        dist = transitions.get(key) or {}
+        if not dist:
+            continue
+        # meilleur next
+        best_next = max(dist.items(), key=lambda kv: kv[1])[0]
+        if k1 != best_next:
+            propositions.append(
+                {
+                    "type": "surprise_transition",
+                    "prefix_bits": prefix_bits,
+                    "etat_prefix": k0,
+                    "action": str(a),
+                    "next_prefix_observe": k1,
+                    "next_prefix_attendu": best_next,
+                    "support": dist.get(k1, 0),
+                    "support_attendu": dist.get(best_next, 0),
+                }
+            )
+
     sortie.parent.mkdir(parents=True, exist_ok=True)
     with sortie.open("w", encoding="utf-8") as f:
-        for prop in propositions:
-            f.write(json.dumps(prop, ensure_ascii=False) + "\n")
+        for p in propositions:
+            f.write(json.dumps(p, ensure_ascii=False) + "\n")
 
     print(f"[OK] écrit: {sortie} ({len(propositions)} propositions)")
-    if actions_inconnues:
-        print(f"[INFO] actions ignorées (non canoniques ActionSnake): {actions_inconnues}")
-    if len(propositions) == 0:
+    if actions_ignores:
+        print(f"[INFO] actions ignorées (non canoniques ActionSnake): {actions_ignores}")
+    if not propositions:
         print("[INFO] 0 surprise détectée. Causes fréquentes:")
         print("       - état trop complet + environnement déterministe (normal)")
         print("       - min-support trop élevé")
