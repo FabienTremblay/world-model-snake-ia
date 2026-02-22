@@ -15,7 +15,12 @@ from dataclasses import dataclass
 from typing import Any, Dict, Tuple, Optional
 
 from agent_service.app.contrats_agents import ContexteDecision, IAgentArene
-from commun.actions_snake import ActionSnake
+from commun.actions_snake import (
+    ActionSnake,
+    ACTION_AVANT,
+    ACTION_OBSERVER_GAUCHE,
+    ACTION_OBSERVER_DROITE,
+)
 from commun.contrats import Pixel
 from instrument.app.contrats import ObservationDonnees, ObservationPixels
 from world_sim.app.arenes_yaml import PALETTE_DEFAUT
@@ -152,16 +157,16 @@ class AgentSnakeCollectifV1Fourmi(IAgentArene):
 
         self._dernier_tick_visite[pos] = int(contexte.tick)
 
-        actions = [ActionSnake.AVANT, ActionSnake.OBSERVER_GAUCHE, ActionSnake.OBSERVER_DROITE]
+        actions = [ACTION_AVANT, ACTION_OBSERVER_GAUCHE, ACTION_OBSERVER_DROITE]
 
         if self.rng.random() < self.params.epsilon:
             # petite exploration aléatoire
             self._position_precedente = pos
             a = self.rng.choice(actions)
             # met à jour l'orientation interne si on tourne
-            if a == ActionSnake.OBSERVER_GAUCHE:
+            if a == ACTION_OBSERVER_GAUCHE:
                 self._dir_precedente = _gauche(dir_actuelle)
-            elif a == ActionSnake.OBSERVER_DROITE:
+            elif a == ACTION_OBSERVER_DROITE:
                 self._dir_precedente = _droite(dir_actuelle)
             return a
 
@@ -178,12 +183,12 @@ class AgentSnakeCollectifV1Fourmi(IAgentArene):
         # Pour un tournant, on "projette" la case qui serait devant après la rotation,
         # mais l'action du tick ne bouge pas : elle ne fait qu'orienter.
         def score_action(a: ActionSnake) -> float:
-            if a == ActionSnake.AVANT:
+            if a == ACTION_AVANT:
                 dir_proj = dir_actuelle
                 px = _pixel_cible(patch, "avant")
                 if est_obstacle(px):
                     return -1e18
-            elif a == ActionSnake.OBSERVER_GAUCHE:
+            elif a == ACTION_OBSERVER_GAUCHE:
                 dir_proj = _gauche(dir_actuelle)
                 px = _pixel_cible(patch, "gauche")
                 if est_obstacle(px):
@@ -202,16 +207,16 @@ class AgentSnakeCollectifV1Fourmi(IAgentArene):
             if est_nourriture(px):
                 score += self.params.bonus_nourriture
             # évite les oscillations inutiles
-            if a != ActionSnake.AVANT:
+            if a != ACTION_AVANT:
                 score -= 0.05
             score += self.rng.random() * 0.001
             return score
 
         best = max(actions, key=score_action)
         self._position_precedente = pos
-        if best == ActionSnake.OBSERVER_GAUCHE:
+        if best == ACTION_OBSERVER_GAUCHE:
             self._dir_precedente = _gauche(dir_actuelle)
-        elif best == ActionSnake.OBSERVER_DROITE:
+        elif best == ACTION_OBSERVER_DROITE:
             self._dir_precedente = _droite(dir_actuelle)
         # AVANT: l'orientation interne se mettra à jour via le gps au tick suivant
         return best

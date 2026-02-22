@@ -1,0 +1,28 @@
+# donnees/config/experiences/JEPA-1/experience.yml
+# Bac à sable JEPA-1 (prototype confiné)
+
+id: JEPA-1
+description: "JEPA-1 — collecte contrôlée (fourmi) puis entraînement hypothèse prédictive capteurs projetés."
+
+arene:
+  # chemin relatif au repo (car se termine par .yml)
+  id: donnees/config/experiences/JEPA-1/arenes/fourmi_v1.yml
+
+agent:
+  # agent existant (plug-in)
+  id: snake_collectif_v1_fourmi
+
+latent: checksum
+
+generation:
+  episodes: 30
+  max_ticks: 300
+  seed: 123
+  niveau_bruit: 0
+
+sorties:
+  journal: journal_episodes.jsonl
+  capture_stdout: true
+
+notes:
+  - "Ce fichier sert surtout à fournir des defaults à ui_cli pour JEPA-1."
