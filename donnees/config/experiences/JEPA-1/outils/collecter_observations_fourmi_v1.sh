@@ -57,7 +57,7 @@ python "$EXP_DIR/outils/extraire_paires_capteurs_depuis_journal.py" \
   --journal "$JOURNAL_DST" \
   --sortie "$DATASETS_DIR/paires_capteurs.pt" \
   --champ-capteurs capteurs_compact \
-  --dim 256 \
+  --dim 560 --mode-string base64_bytes \
   --n-grams 3
 
 echo "[JEPA-1] OK: $DATASETS_DIR/paires_capteurs.pt"
