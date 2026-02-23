@@ -14,10 +14,12 @@
     "device": "cpu"
   },
   "gate": {
+    "mode": "quantile",
+    "quantile": 0.9,
     "seuil_connu": 0.1
   },
   "policy": {
     "strategie_inconnu": "observer_gauche_ou_droite",
-    "strategie_connu": "avant"
+    "strategie_connu": "observer_gauche_ou_droite"
   }
 }

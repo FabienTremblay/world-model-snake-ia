@@ -1,63 +1,59 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# JEPA-1 — Collecte contrôlée d'observations (agent fourmi)
-#
-# Produit un journal d'épisodes via ui_cli, puis crée :
-#   - artefacts/datasets/journal_episodes_fourmi.jsonl
-#   - artefacts/datasets/paires_capteurs.pt
-#
-# Le pipeline JEPA-1 (A107/A108 offline) réutilise ensuite ces paires.
+# JEPA-1 — collecte d'observations via l'agent fourmi + post-traitement du journal
+# Notes:
+# - ui_cli accepte --run-tag (pas --run_tag)
+# - ui_cli ne connaît pas --headless (la collecte est déjà non-interactive)
+# - on conserve le journal brut + on produit un journal enrichi pour identifier le rôle "collecteur"
 
-RACINE_REPO="$(cd "$(dirname "$0")/../../../../.." && pwd)"
-EXP_DIR="$RACINE_REPO/donnees/config/experiences/JEPA-1"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+EXP_DIR="$(cd "$HERE/.." && pwd)"
+EXP_NAME="JEPA-1"
 
-export PYTHONPATH="$RACINE_REPO/services"
+AGENT_ID="snake_collectif_v1_fourmi"
+ARENE="$EXP_DIR/arenes/fourmi_v1.yml"
+
+echo "[JEPA-1] collecte: experience=$EXP_NAME agent=$AGENT_ID arene=$ARENE"
+
+if [[ -z "${PYTHONPATH:-}" ]]; then
+  export PYTHONPATH="services"
+fi
 
 RUN_TAG="jepa1_collecte_fourmi"
-ARENE_PATH="$EXP_DIR/arenes/fourmi_v1.yml"
-
-echo "[JEPA-1] collecte: experience=JEPA-1 agent=snake_collectif_v1_fourmi arene=$ARENE_PATH"
-
 python -m ui_cli.app.main \
-  --experience JEPA-1 \
+  --experience "$EXP_NAME" \
+  --arene "$ARENE" \
+  --agent "$AGENT_ID" \
   --run-tag "$RUN_TAG" \
-  --arene "$ARENE_PATH" \
-  --agent snake_collectif_v1_fourmi \
-  --episodes 30 \
-  --max-ticks 300 \
-  --seed 123 \
-  --niveau-bruit 0 \
-  --truncate \
   --capture-stdout
 
-# Trouver le dernier run correspondant au tag
-RUNS_DIR="$EXP_DIR/artefacts/runs"
-DERNIER_RUN="$(ls -1 "$RUNS_DIR" | grep "_${RUN_TAG}$" | tail -n 1 || true)"
-if [[ -z "$DERNIER_RUN" ]]; then
-  echo "[JEPA-1] ERREUR: aucun run trouvé avec tag $RUN_TAG dans $RUNS_DIR" >&2
-  exit 2
+# Par convention JEPA-1: le script de collecte écrit ici
+JOURNAL="$EXP_DIR/artefacts/datasets/journal_episodes_fourmi.jsonl"
+if [[ ! -f "$JOURNAL" ]]; then
+  echo "[JEPA-1] ERREUR: journal introuvable: $JOURNAL" >&2
+  exit 1
 fi
+echo "[JEPA-1] OK: $JOURNAL"
 
-JOURNAL_SRC="$RUNS_DIR/$DERNIER_RUN/journal_episodes.jsonl"
-if [[ ! -f "$JOURNAL_SRC" ]]; then
-  echo "[JEPA-1] ERREUR: journal introuvable: $JOURNAL_SRC" >&2
-  exit 2
-fi
+# Journal enrichi (non-bloquant si tu ne l'utilises pas encore)
+JOURNAL_ENRICHI="$EXP_DIR/artefacts/datasets/journal_episodes_fourmi.enrichi.jsonl"
+python "$EXP_DIR/outils/post_traiter_journal_collecte.py" \
+  --journal "$JOURNAL" \
+  --sortie "$JOURNAL_ENRICHI" \
+  --agent-id "fourmi" \
+  --role-agent "collecteur" \
+  --objectif "couverture_observations" \
+  --overwrite
+echo "[JEPA-1] OK: $JOURNAL_ENRICHI"
 
-DATASETS_DIR="$EXP_DIR/artefacts/datasets"
-mkdir -p "$DATASETS_DIR"
-JOURNAL_DST="$DATASETS_DIR/journal_episodes_fourmi.jsonl"
-
-cp -f "$JOURNAL_SRC" "$JOURNAL_DST"
-echo "[JEPA-1] OK: $JOURNAL_DST"
-
-# Extraire paires (t -> t+1) sur capteurs_compact
+# Extraction paires capteurs (base64 -> vecteur 560)
+PAIRES="$EXP_DIR/artefacts/datasets/paires_capteurs.pt"
 python "$EXP_DIR/outils/extraire_paires_capteurs_depuis_journal.py" \
-  --journal "$JOURNAL_DST" \
-  --sortie "$DATASETS_DIR/paires_capteurs.pt" \
+  --journal "$JOURNAL" \
+  --sortie "$PAIRES" \
   --champ-capteurs capteurs_compact \
-  --dim 560 --mode-string base64_bytes \
-  --n-grams 3
+  --dim 560 \
+  --mode-string base64_bytes
 
-echo "[JEPA-1] OK: $DATASETS_DIR/paires_capteurs.pt"
+echo "[JEPA-1] OK: $PAIRES"

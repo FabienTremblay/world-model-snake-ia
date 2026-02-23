@@ -1,23 +1,11 @@
 from __future__ import annotations
 
-import argparse, json, os, random, math, time
-from dataclasses import dataclass
-from typing import Any, Dict, Tuple
+import argparse, json, os, random, time
+from typing import Any, Dict, Tuple, List
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-
-# =========================================================
-#  JEPA-1 — Hypothèse prédictive (capteurs projetés t -> t+1)
-#  - entraînement : MSE(x_{t+1}, f(x_t))
-#  - épreuve : surprise = MSE, gate connu/inconnu
-#  - policy minimale (offline) :
-#      connu -> avant
-#      inconnu -> observer_gauche / observer_droite (alternance)
-#  IMPORTANT : actions conformes au contrat snake.
-# =========================================================
 
 ACTIONS = ["avant", "observer_gauche", "observer_droite"]
 
@@ -66,9 +54,7 @@ def sauvegarder_agent_personne_spec(sortie_dir: str, plan: Dict[str, Any], cfg: 
         "hypotheses": plan.get("hypotheses", []),
         "tronc": plan.get("tronc", {}),
         "tetes": plan.get("tetes", []),
-        "artefacts": {
-            "poids_pt": "artefacts/poids/agent_personne.poids.pt",
-        },
+        "artefacts": {"poids_pt": "artefacts/poids/agent_personne.poids.pt"},
         "horodatage": time.strftime("%Y-%m-%d_%Hh%M"),
     }
     out_path = os.path.join(sortie_dir, "agents", "agent_personne.json")
@@ -77,26 +63,36 @@ def sauvegarder_agent_personne_spec(sortie_dir: str, plan: Dict[str, Any], cfg: 
     return out_path
 
 
+def _quantiles_numpy(values: List[float], qs: List[float]) -> Dict[str, float]:
+    import numpy as np
+    arr = np.array(values, dtype=np.float64)
+    out = {}
+    for q in qs:
+        out[f"p{int(q*100):02d}"] = float(np.quantile(arr, q))
+    return out
+
+
 def entrainer(cfg_path: str) -> None:
     cfg = charger_config(cfg_path)
-    plan_path = cfg["agent_personne_plan"]
-    with open(os.path.join(os.path.dirname(cfg_path), "..", plan_path), "r", encoding="utf-8") as f:
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(cfg_path), ".."))
+
+    plan_path = os.path.join(base_dir, cfg["agent_personne_plan"])
+    with open(plan_path, "r", encoding="utf-8") as f:
         plan = json.load(f)
 
     seed = int(cfg["entrainement"]["seed"])
     set_seed(seed)
 
     device = cfg["entrainement"].get("device", "cpu")
-    x, y = charger_dataset_paires(os.path.join(os.path.dirname(cfg_path), "..", cfg["dataset_paires_pt"]), device=device)
+    x, y = charger_dataset_paires(os.path.join(base_dir, cfg["dataset_paires_pt"]), device=device)
 
     dim = int(cfg["capteurs"]["dim_vecteur"])
-    hidden = int(cfg.get("capteurs", {}).get("hidden", cfg["capteurs"].get("hidden", 64)))
-    # hidden pour le modèle = hyperparams de l'hypothèse si présent
+
     hyp_ref = plan["hypotheses"][0]["ref"]
-    hyp_file = os.path.join(os.path.dirname(cfg_path), "..", hyp_ref)
+    hyp_file = os.path.join(base_dir, hyp_ref)
     with open(hyp_file, "r", encoding="utf-8") as f:
         hyp = json.load(f)
-    hidden = int(hyp.get("hyperparams", {}).get("hidden", hidden))
+    hidden = int(hyp.get("hyperparams", {}).get("hidden", 64))
 
     assert x.shape[1] == dim and y.shape[1] == dim, f"dim mismatch: x={x.shape}, y={y.shape}, dim={dim}"
 
@@ -110,6 +106,7 @@ def entrainer(cfg_path: str) -> None:
     indices = torch.arange(n, device=device)
 
     model.train()
+    hist = []
     for ep in range(1, epochs + 1):
         perm = indices[torch.randperm(n)]
         total = 0.0
@@ -125,10 +122,10 @@ def entrainer(cfg_path: str) -> None:
             opt.step()
             total += float(loss.item()) * xb.shape[0]
             nb += xb.shape[0]
-        print(f"[epoch {ep}/{epochs}] mse={total/nb:.6f}")
+        mse = total/nb
+        hist.append(mse)
+        print(f"[epoch {ep}/{epochs}] mse={mse:.6f}")
 
-    # Sauvegardes
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(cfg_path), ".."))
     sortie_dir = os.path.join(base_dir, cfg["sortie_dir"])
     ensure_dir(os.path.join(sortie_dir, "poids"))
     poids_path = os.path.join(sortie_dir, "poids", "agent_personne.poids.pt")
@@ -138,14 +135,33 @@ def entrainer(cfg_path: str) -> None:
 
     ensure_dir(os.path.join(sortie_dir, "resultats"))
     rapport_path = os.path.join(sortie_dir, "resultats", "rapport_entrainement.json")
-    rapport = {"mse_finale_estimee": None, "epochs": epochs, "batch_size": bs, "lr": cfg["entrainement"]["lr"], "seed": seed,
-               "poids": os.path.relpath(poids_path, base_dir), "spec": os.path.relpath(spec_path, base_dir)}
+    rapport = {
+        "epochs": epochs, "batch_size": bs, "lr": cfg["entrainement"]["lr"], "seed": seed,
+        "poids": os.path.relpath(poids_path, base_dir),
+        "spec": os.path.relpath(spec_path, base_dir),
+        "mse_par_epoch": hist,
+    }
     with open(rapport_path, "w", encoding="utf-8") as f:
         json.dump(rapport, f, ensure_ascii=False, indent=2)
 
     print("OK:", os.path.relpath(spec_path, base_dir))
     print("OK:", os.path.relpath(poids_path, base_dir))
     print("OK:", os.path.relpath(rapport_path, base_dir))
+
+
+def _calculer_seuil_depuis_surprise(surprises: torch.Tensor, gate_cfg: Dict[str, Any]) -> float:
+    mode = gate_cfg.get("mode", "seuil")
+    seuil = float(gate_cfg.get("seuil_connu", 0.10))
+    if mode == "quantile":
+        q = float(gate_cfg.get("quantile", 0.90))
+        q = min(max(q, 0.0), 1.0)
+        try:
+            seuil = float(torch.quantile(surprises, q).item())
+        except Exception:
+            s = surprises.detach().cpu().numpy()
+            import numpy as np
+            seuil = float(np.quantile(s, q))
+    return seuil
 
 
 def eprouver(cfg_path: str) -> None:
@@ -156,7 +172,6 @@ def eprouver(cfg_path: str) -> None:
     set_seed(seed)
     device = cfg["epreuve"].get("device", "cpu")
 
-    # Charger spec + poids
     spec_path = os.path.join(base_dir, cfg["agent_personne_spec"])
     with open(spec_path, "r", encoding="utf-8") as f:
         spec = json.load(f)
@@ -172,10 +187,8 @@ def eprouver(cfg_path: str) -> None:
 
     x, y = charger_dataset_paires(os.path.join(base_dir, cfg["dataset_paires_pt"]), device=device)
 
-    seuil_connu = float(cfg["gate"]["seuil_connu"])
     bs = int(cfg["epreuve"]["batch_size"])
 
-    # Sorties
     out_journal = os.path.join(base_dir, cfg["sorties"]["journal_agent"])
     out_registre = os.path.join(base_dir, cfg["sorties"]["registre_epistemique"])
     out_resultats = os.path.join(base_dir, cfg["sorties"]["resultats"])
@@ -183,63 +196,109 @@ def eprouver(cfg_path: str) -> None:
     os.makedirs(os.path.dirname(out_registre), exist_ok=True)
     os.makedirs(os.path.dirname(out_resultats), exist_ok=True)
 
-    # Registre minimal
+    # Passe 1: surprises
+    all_surprises = []
+    with torch.no_grad():
+        for i in range(0, x.shape[0], bs):
+            xb = x[i:i+bs]
+            yb = y[i:i+bs]
+            pred = model(xb)
+            mse_item = ((pred - yb) ** 2).mean(dim=1)  # [B]
+            all_surprises.append(mse_item.detach().cpu())
+    all_surprises = torch.cat(all_surprises, dim=0)  # [N]
+
+    gate_cfg = cfg.get("gate", {})
+    seuil_connu = _calculer_seuil_depuis_surprise(all_surprises, gate_cfg)
+
+    # Policy
+    alt = 0
+    total = 0
+    nb_connu = 0
+    nb_inconnu = 0
+    total_mse = 0.0
+
+    strategie_inconnu = cfg.get("policy", {}).get("strategie_inconnu", "observer_gauche_ou_droite")
+    strategie_connu = cfg.get("policy", {}).get("strategie_connu", "avant")
+
+    def choisir_action(strat: str) -> str:
+        nonlocal alt
+        if strat == "avant":
+            return "avant"
+        if strat == "observer_gauche":
+            return "observer_gauche"
+        if strat == "observer_droite":
+            return "observer_droite"
+        a = "observer_gauche" if (alt % 2 == 0) else "observer_droite"
+        alt += 1
+        return a
+
+    s_list = [float(v.item()) for v in all_surprises]
+    import numpy as np
+    arr = np.array(s_list, dtype=np.float64)
+    stats = {
+        "n": int(arr.size),
+        "mean": float(arr.mean()),
+        "std": float(arr.std()),
+        "min": float(arr.min()),
+        "max": float(arr.max()),
+        "quantiles": _quantiles_numpy(s_list, [0.50, 0.75, 0.90, 0.95, 0.99]),
+    }
+
     registre = {
         "experience": cfg.get("experience"),
         "agent_personne_id": spec.get("agent_personne_id"),
+        "gate": {
+            "mode": gate_cfg.get("mode", "seuil"),
+            "quantile": gate_cfg.get("quantile"),
+            "seuil_connu": seuil_connu,
+            "stats_surprise": stats,
+        },
         "hypotheses": {
             "h_pred_capteurs_proj_t1_v1": {
                 "nb_tests": 0,
                 "mse_moyenne": 0.0,
-                "seuil_connu": seuil_connu
+                "mse_quantiles": stats["quantiles"],
             }
         }
     }
 
-    # Policy offline minimale: connu->avant ; inconnu->alterner gauche/droite
-    alt = 0
-    total_mse = 0.0
-    total = 0
-    nb_connu = 0
-    nb_inconnu = 0
-
     with open(out_journal, "w", encoding="utf-8") as jf:
-        for i in range(0, x.shape[0], bs):
-            xb = x[i:i+bs]
-            yb = y[i:i+bs]
-            with torch.no_grad():
-                pred = model(xb)
-                # MSE par item
-                mse_item = ((pred - yb) ** 2).mean(dim=1)  # [B]
-            for j in range(mse_item.shape[0]):
-                surprise = float(mse_item[j].item())
-                connu = surprise <= seuil_connu
-                if connu:
-                    action = "avant"
-                    nb_connu += 1
-                    mode = "connu_planifier"
-                else:
-                    action = "observer_gauche" if (alt % 2 == 0) else "observer_droite"
-                    alt += 1
-                    nb_inconnu += 1
-                    mode = "inconnu_explorer"
+        for idx in range(all_surprises.shape[0]):
+            surprise = float(all_surprises[idx].item())
+            connu = surprise <= seuil_connu
 
-                # contrat action (hard assert)
-                assert action in ACTIONS, f"action invalide: {action}"
+            if connu:
+                mode = "connu_exploiter"
+                action = choisir_action(strategie_connu)
+                nb_connu += 1
+            else:
+                mode = "inconnu_explorer"
+                action = choisir_action(strategie_inconnu)
+                nb_inconnu += 1
 
-                jf.write(json.dumps({
-                    "idx": total,
-                    "mode": mode,
-                    "surprise": surprise,
-                    "seuil_connu": seuil_connu,
-                    "action": action
-                }, ensure_ascii=False) + "\n")
+            assert action in ACTIONS, f"action invalide: {action}"
 
-                total_mse += surprise
-                total += 1
+            jf.write(json.dumps({
+                "idx": total,
+                "mode": mode,
+                "surprise": surprise,
+                "seuil_connu": seuil_connu,
+                "action": action,
+                "agent_id": spec.get("agent_personne_id"),
+                "experience": cfg.get("experience"),
+            }, ensure_ascii=False) + "\n")
+
+            total_mse += surprise
+            total += 1
 
     registre["hypotheses"]["h_pred_capteurs_proj_t1_v1"]["nb_tests"] = total
     registre["hypotheses"]["h_pred_capteurs_proj_t1_v1"]["mse_moyenne"] = (total_mse / max(total, 1))
+    registre["gate"]["effet"] = {
+        "nb_connu": nb_connu,
+        "nb_inconnu": nb_inconnu,
+        "ratio_inconnu": nb_inconnu / max(total, 1),
+        "ratio_connu": nb_connu / max(total, 1),
+    }
 
     with open(out_registre, "w", encoding="utf-8") as f:
         json.dump(registre, f, ensure_ascii=False, indent=2)
@@ -248,12 +307,14 @@ def eprouver(cfg_path: str) -> None:
         "experience": cfg.get("experience"),
         "agent_personne_id": spec.get("agent_personne_id"),
         "nb_tests": total,
-        "mse_moyenne": total_mse / max(total, 1),
+        "surprise_moyenne": total_mse / max(total, 1),
         "nb_connu": nb_connu,
         "nb_inconnu": nb_inconnu,
         "ratio_connu": nb_connu / max(total, 1),
         "ratio_inconnu": nb_inconnu / max(total, 1),
         "seuil_connu": seuil_connu,
+        "gate_mode": gate_cfg.get("mode", "seuil"),
+        "gate_quantile": gate_cfg.get("quantile"),
         "journaux": {
             "journal_agent": cfg["sorties"]["journal_agent"],
             "registre_epistemique": cfg["sorties"]["registre_epistemique"]
@@ -265,6 +326,7 @@ def eprouver(cfg_path: str) -> None:
     print("OK:", cfg["sorties"]["journal_agent"])
     print("OK:", cfg["sorties"]["registre_epistemique"])
     print("OK:", cfg["sorties"]["resultats"])
+    print(f"[gate] seuil_connu={seuil_connu:.8f} (mode={gate_cfg.get('mode','seuil')}, quantile={gate_cfg.get('quantile')})")
 
 
 def main():
