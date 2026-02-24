@@ -115,7 +115,9 @@ oₜ = g(sₜ, i)
 Les instruments peuvent être : - activés volontairement - automatiques -
 concurrents - permanents
 
-L'observation est un événement du monde.
+ L'observation n'est pas un événement ontologique du monde.
+ Elle est une projection instrumentale produite à partir de l'état du monde.
+ Le monde évolue indépendamment du fait qu'il soit observé.
 
 ------------------------------------------------------------------------
 
@@ -165,6 +167,10 @@ où Aₜ inclut les activations instrumentales.
 
 1.  Le monde est indépendant de la représentation.
 2.  L'agent fait partie du monde.
+    Cependant, le modèle cognitif (tronc, mémoire, têtes)
+    est une description interne du système interprétatif,
+    et n'est pas explicitement inclus dans S
+    au niveau de cette formalisation.
 3.  L'observation est un événement du monde.
 4.  L'évaluation (récompense) est normative et acquise.
 5.  La dynamique est concurrentielle.

@@ -238,11 +238,11 @@ Dans notre cadre théorique, un instrument peut être considéré comme :
 -   un acteur minimal
 -   un témoin simultané
 
-Cela implique :
-
--   l'observation est un événement du monde
--   plusieurs instruments peuvent observer simultanément
--   l'observation peut être concurrentielle
+ Cela implique :
+   l'observation est une projection dépendante d'un instrument
+   plusieurs instruments peuvent observer simultanément
+   l'activation instrumentale peut consommer des ressources
+   seules les actions (et non l'observation elle-même) modifient le monde
 
 ------------------------------------------------------------------------
 

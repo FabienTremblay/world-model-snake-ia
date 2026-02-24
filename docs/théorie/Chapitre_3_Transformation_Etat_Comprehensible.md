@@ -24,7 +24,7 @@ l'action**.
 
 ## Monde
 
-S : espace des états du monde\
+S : espace des états du monde
 sₜ ∈ S : état naturel à l'instant t
 
 ------------------------------------------------------------------------
@@ -35,11 +35,11 @@ Soit :
 
 𝓒 = {C₁, C₂, C₃, C₄, C₅}
 
-Chaque canal C_k reçoit des instruments compatibles :
+Chaque canal Cₖ reçoit des instruments compatibles :
 
-I_k ⊆ I
+Iₖ ⊆ I
 
-I = ⋃ I_k
+I = ⋃ Iₖ
 
 ------------------------------------------------------------------------
 
@@ -47,7 +47,7 @@ I = ⋃ I_k
 
 À l'instant t :
 
-iₖ,ₜ ∈ I_k
+iₖ,ₜ ∈ Iₖ
 
 Chaque canal active un instrument particulier.
 
@@ -57,7 +57,7 @@ Chaque canal active un instrument particulier.
 
 Chaque instrument peut fonctionner à une échelle :
 
-λₖ,ₜ ∈ Λ_k
+λₖ,ₜ ∈ Λₖ
 
 L'observation produite est :
 
@@ -67,13 +67,19 @@ oₖ,ₜ = gₖ(sₜ, iₖ,ₜ, λₖ,ₜ)
 
 # II. Encodage et tronc multi-canaux
 
-Chaque canal est encodé séparément :
+ Chaque canal produit au minimum un encodage rapide :
 
-zₖ,ₜ = hₖ(oₖ,ₜ)
+ zₖ,ₜᶠᵃˢᵗ = hₖᶠᵃˢᵗ(oₖ,ₜ)
+
+ Un encodage plus approfondi peut être calculé
+ lors d'un traitement délibératif (cf. architecture).
 
 Le tronc agrège :
 
-zₜ = H(z₁,ₜ, z₂,ₜ, z₃,ₜ, z₄,ₜ, z₅,ₜ)
+ zₜᵖʳⁱᵐⁱᵗⁱᵛᵉ = H(z₁,ₜᶠᵃˢᵗ, ..., z₅,ₜᶠᵃˢᵗ)
+
+ Cette fusion primitive peut être enrichie
+ par des traitements plus lents selon le routage attentionnel.
 
 zₜ est la représentation latente intégrée.
 
@@ -101,7 +107,9 @@ Les opérations coûteuses incluent :
 -   augmenter la résolution
 -   permuter entre instruments compatibles
 
-L'attention structure ce qui devient accessible au tronc.
+ L'attention est un mécanisme de routage.
+ Elle détermine si le traitement reste réflexe
+ ou s'oriente vers un traitement conscient plus approfondi.
 
 ------------------------------------------------------------------------
 
@@ -147,8 +155,11 @@ Les têtes peuvent :
 
 Ainsi :
 
-Attention = combinaison de : - dynamiques réflexes entraînées -
-modulation stratégique des têtes
+ L'attention n'est pas un module séparé,
+ mais une classe de routage produite par le tronc.
+
+ La conscience correspond au traitement effectué
+ lorsque cette classe active les têtes délibératives.
 
 ------------------------------------------------------------------------
 
