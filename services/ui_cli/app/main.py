@@ -612,6 +612,13 @@ def main(argv: list[str] | None = None) -> None:
         # délègue au sous-cli, sans interférer avec le reste
         main_preparer_agent(argv[1:])
         return
+
+    if len(argv) >= 1 and argv[0] == "pipeline":
+        from ui_cli.app.pipeline.cli_pipeline import main_pipeline
+
+        # délègue au sous-cli pipeline
+        main_pipeline(argv[1:])
+        return
     # ------------------------------------------------------------
 
     args = construire_parser().parse_args(argv)

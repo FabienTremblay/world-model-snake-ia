@@ -1,0 +1,25 @@
+{
+  "experience": "JEPA-2",
+  "agent_personne_spec": "artefacts/agents/agent_personne.json",
+  "poids_pt": "artefacts/poids/agent_personne.poids.pt",
+  "dataset_paires_pt": "artefacts/datasets/paires_capteurs.pt",
+  "sorties": {
+    "journal_agent": "artefacts/journaux/journal_agent.jsonl",
+    "registre_epistemique": "artefacts/journaux/registre_epistemique.json",
+    "resultats": "artefacts/resultats/resultats.json"
+  },
+  "epreuve": {
+    "batch_size": 512,
+    "seed": 123,
+    "device": "cpu"
+  },
+  "gate": {
+    "mode": "quantile",
+    "quantile": 0.9,
+    "seuil_connu": 0.1
+  },
+  "policy": {
+    "strategie_inconnu": "observer_gauche_ou_droite",
+    "strategie_connu": "observer_gauche_ou_droite"
+  }
+}

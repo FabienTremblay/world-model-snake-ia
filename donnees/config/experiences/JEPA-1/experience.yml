@@ -24,5 +24,14 @@ sorties:
   journal: journal_episodes.jsonl
   capture_stdout: true
 
+# Conventions du pipeline (utilisées par `ui_cli pipeline run`).
+pipeline:
+  run_tag_collecte: jepa1_collecte_fourmi
+  journal_stable: artefacts/datasets/journal_episodes_fourmi.jsonl
+  journal_enrichi_stable: artefacts/datasets/journal_episodes_fourmi.enrichi.jsonl
+  paires_stable: artefacts/datasets/paires_capteurs.pt
+  config_entrainement: entrainement/config_entrainement.json
+  config_epreuve: epreuve/config_epreuve.json
+
 notes:
   - "Ce fichier sert surtout à fournir des defaults à ui_cli pour JEPA-1."

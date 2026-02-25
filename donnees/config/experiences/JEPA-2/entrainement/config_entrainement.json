@@ -1,0 +1,20 @@
+{
+  "experience": "JEPA-2",
+  "agent_personne_plan": "plan/agent_personne.plan.json",
+  "dataset_paires_pt": "artefacts/datasets/paires_capteurs.pt",
+  "sortie_dir": "artefacts",
+  "entrainement": {
+    "epochs": 5,
+    "batch_size": 256,
+    "lr": 0.001,
+    "seed": 123,
+    "device": "cpu"
+  },
+  "capteurs": {
+    "dim_vecteur": 560,
+    "vectorisation": {
+      "mode": "base64_bytes",
+      "n_grams": 3
+    }
+  }
+}
