@@ -44,6 +44,14 @@ def sha256_file(p: Path) -> str:
     return h.hexdigest()
 
 
+def copier_fichier(src: Path, dst: Path, *, overwrite: bool = True) -> None:
+    """Copie robuste (création des parents)."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists() and not overwrite:
+        raise FileExistsError(f"destination existe déjà: {dst}")
+    dst.write_bytes(src.read_bytes())
+
+
 def _git_commit_sha(racine_repo: Path) -> Optional[str]:
     """Récupère le commit courant si on est dans un repo git."""
     head = racine_repo / ".git" / "HEAD"
@@ -74,9 +82,11 @@ class PlanPipeline:
     configs: Dict[str, Dict[str, Any]]
     inputs: Dict[str, Any]
     outputs: Dict[str, Any]
+    # Optionnel (ajout rétro-compatible): instantanés des entrées figées du run.
+    inputs_fixes: Dict[str, Any] | None = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "experience_id": self.experience_id,
             "run_id": self.run_id,
             "run_dir": self.run_dir,
@@ -90,6 +100,9 @@ class PlanPipeline:
             "inputs": self.inputs,
             "outputs": self.outputs,
         }
+        if self.inputs_fixes:
+            d["inputs_fixes"] = self.inputs_fixes
+        return d
 
     def save(self, path: Path) -> None:
         path.write_text(json.dumps(self.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -110,6 +123,7 @@ class PlanPipeline:
             configs=dict(d.get("configs") or {}),
             inputs=dict(d.get("inputs") or {}),
             outputs=dict(d.get("outputs") or {}),
+            inputs_fixes=dict(d.get("inputs_fixes") or {}) if d.get("inputs_fixes") else None,
         )
 
 
@@ -148,7 +162,26 @@ def construire_plan(
         configs=cfgs,
         inputs=inputs,
         outputs=outputs,
+        inputs_fixes=None,
     )
+
+
+def ecrire_inputs_fixes_dans_plan(plan_path: Path, inputs_fixes: Dict[str, Any]) -> None:
+    """Patch rétro-compatible: ajoute/écrase la clé inputs_fixes dans plan_pipeline.json."""
+    d = json.loads(plan_path.read_text(encoding="utf-8"))
+    d["inputs_fixes"] = inputs_fixes
+    plan_path.write_text(json.dumps(d, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def verifier_checksums_strict(run_dir: Path, *, expected: Dict[str, str]) -> None:
+    """Valide que les fichiers du run correspondent aux checksums attendus."""
+    for rel, sha_attendu in expected.items():
+        p = run_dir / rel
+        if not p.exists():
+            raise FileNotFoundError(f"replay strict: fichier manquant: {rel}")
+        sha = sha256_file(p)
+        if sha != sha_attendu:
+            raise ValueError(f"replay strict: checksum différent pour {rel}")
 
 
 def ecrire_checksums(run_dir: Path, paths: Iterable[Path]) -> Path:

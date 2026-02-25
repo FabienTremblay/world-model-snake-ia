@@ -32,6 +32,11 @@ def construire_parser_pipeline() -> argparse.ArgumentParser:
     ap_replay.add_argument("--run-id", required=True)
     ap_replay.add_argument("--allow-drift", action="store_true", help="autorise des configs différentes du plan")
 
+    ap_rerun = sp.add_parser("rerun", help="Relance un run à partir du plan, mais dans un NOUVEAU run_id (recalcule les inputs)")
+    ap_rerun.add_argument("--experience", required=True)
+    ap_rerun.add_argument("--from-run-id", required=True)
+    ap_rerun.add_argument("--allow-drift", action="store_true", help="autorise des configs différentes du plan")
+
     ap_export = sp.add_parser("export-run", help="Exporte un run en zip")
     ap_export.add_argument("--experience", required=True)
     ap_export.add_argument("--run-id", required=True)
@@ -99,7 +104,7 @@ def main_pipeline(argv: list[str] | None = None) -> None:
         plan = PlanPipeline.load(plan_path)
         if not args.allow_drift:
             verifier_configs_strict(plan)
-        # rejoue les phases du plan (dans le même run_dir) avec resume
+        # rejoue les phases du plan (dans le même run_dir) avec inputs figés
         runner.run(
             phases=list(plan.phases),
             seed=int(plan.seed),
@@ -107,8 +112,32 @@ def main_pipeline(argv: list[str] | None = None) -> None:
             force=False,
             strict=not bool(args.allow_drift),
             replay_run_dir=run_dir,
+            mode="replay",
         )
         print(json.dumps({"event": "pipeline_replay_ok", "run_id": args.run_id}, ensure_ascii=False))
+        return
+
+    if args.cmd == "rerun":
+        runner = PipelineRunner(racine_repo=racine_repo, experience_id=str(args.experience))
+        from_run_dir = runner.bac.paths.runs_dir / str(args.from_run_id)
+        plan_path = from_run_dir / "plan_pipeline.json"
+        if not plan_path.exists():
+            raise SystemExit(f"plan introuvable: {plan_path}")
+        plan = PlanPipeline.load(plan_path)
+        if not args.allow_drift:
+            verifier_configs_strict(plan)
+        phases = list(plan.phases) if plan.phases else ["collecte", "enrichissement", "dataset", "entrainement", "epreuve"]
+        # Nouveau run_id, recalcul des inputs (force=False, resume=False)
+        new_plan = runner.run(
+            phases=phases,
+            seed=int(plan.seed),
+            resume=False,
+            force=False,
+            strict=not bool(args.allow_drift),
+            replay_run_dir=None,
+            mode="run",
+        )
+        print(json.dumps({"event": "pipeline_rerun_ok", "from": args.from_run_id, "plan": str(Path(new_plan.run_dir) / 'plan_pipeline.json')}, ensure_ascii=False))
         return
 
     if args.cmd == "export-run":

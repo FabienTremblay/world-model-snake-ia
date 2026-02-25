@@ -14,10 +14,14 @@ import yaml
 from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
 from ui_cli.app.pipeline.repro import (
     PlanPipeline,
+    copier_fichier,
     construire_plan,
     ecrire_checksums,
+    ecrire_inputs_fixes_dans_plan,
     fixer_seed,
+    sha256_file,
     verifier_configs_strict,
+    verifier_checksums_strict,
 )
 
 
@@ -249,6 +253,7 @@ class PipelineRunner:
         force: bool,
         strict: bool,
         replay_run_dir: Optional[Path] = None,
+        mode: str = "run",  # run|replay
     ) -> PlanPipeline:
         fixer_seed(seed)
 
@@ -313,13 +318,53 @@ class PipelineRunner:
         if replay_run_dir is not None and strict:
             verifier_configs_strict(plan)
 
+        # ---- inputs figés (reproductibilité)
+        inputs_dir = run_dir / "inputs"
+        inputs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Convention des fichiers figés (dans run_dir)
+        snap_journal = inputs_dir / "journal_episodes.jsonl"
+        snap_journal_enrichi = inputs_dir / "journal_episodes.enrichi.jsonl"
+        snap_paires = inputs_dir / "paires_capteurs.pt"
+
+        # En replay strict: on restaure les inputs figés vers les pointeurs stables,
+        # et on refuse si les checksums diffèrent.
+        if mode == "replay" and strict:
+            checksums_path = run_dir / "checksums.json"
+            expected = json.loads(checksums_path.read_text(encoding="utf-8")) if checksums_path.exists() else {}
+            expected_inputs = {
+                "inputs/journal_episodes.jsonl": expected.get("inputs/journal_episodes.jsonl"),
+                "inputs/journal_episodes.enrichi.jsonl": expected.get("inputs/journal_episodes.enrichi.jsonl"),
+                "inputs/paires_capteurs.pt": expected.get("inputs/paires_capteurs.pt"),
+            }
+            expected_inputs = {k: v for k, v in expected_inputs.items() if v}
+            if expected_inputs:
+                verifier_checksums_strict(run_dir, expected=expected_inputs)
+            # restauration (overwrite)
+            if snap_journal.exists():
+                copier_fichier(snap_journal, journal_stable, overwrite=True)
+            if snap_journal_enrichi.exists():
+                copier_fichier(snap_journal_enrichi, journal_enrichi, overwrite=True)
+            if snap_paires.exists():
+                copier_fichier(snap_paires, paires_stable, overwrite=True)
+            print(json.dumps({"event": "pipeline_replay_inputs_restaures", "run_id": run_id}, ensure_ascii=False))
+
         # ---------------- phases
         for phase in phases:
             if phase == "collecte":
-                # si journal stable existe déjà et resume/skip
-                if journal_stable.exists() and not force and not resume:
-                    print(json.dumps({"event": "pipeline_collecte_skip", "run_id": run_id}, ensure_ascii=False))
+                # En replay: ne recalcule pas. On utilise l'instantané figé.
+                if mode == "replay":
+                    if not snap_journal.exists():
+                        raise FileNotFoundError(f"replay strict: input manquant: {snap_journal}")
+                    print(json.dumps({"event": "pipeline_collecte_replay_use_inputs", "run_id": run_id}, ensure_ascii=False))
                 else:
+                    # si journal stable existe déjà et resume/skip
+                    if journal_stable.exists() and not force and not resume:
+                        # snapshot quand même dans le run
+                        copier_fichier(journal_stable, snap_journal, overwrite=True)
+                        copier_fichier(journal_stable, run_dir / "journal_episodes.jsonl", overwrite=True)
+                        print(json.dumps({"event": "pipeline_collecte_skip", "run_id": run_id}, ensure_ascii=False))
+                        continue
                     # lance ui_cli pour produire un run de collecte
                     run_tag_collecte = self.cfg_pipeline.run_tag_collecte
                     _subprocess_ui_cli_collecte(
@@ -339,8 +384,9 @@ class PipelineRunner:
                         raise FileNotFoundError(f"collecte: journal introuvable: {journal_run}")
                     journal_stable.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(journal_run, journal_stable)
-                    # copie aussi dans run_dir
-                    shutil.copy2(journal_run, run_dir / "journal_episodes.jsonl")
+                    # copie aussi dans run_dir + snapshot inputs
+                    copier_fichier(journal_run, run_dir / "journal_episodes.jsonl", overwrite=True)
+                    copier_fichier(journal_run, snap_journal, overwrite=True)
                     print(
                         json.dumps(
                             {
@@ -354,11 +400,19 @@ class PipelineRunner:
                     )
 
             elif phase == "enrichissement":
-                if journal_enrichi.exists() and not force and not resume:
-                    print(json.dumps({"event": "pipeline_enrichissement_skip", "run_id": run_id}, ensure_ascii=False))
+                if mode == "replay":
+                    if not snap_journal_enrichi.exists():
+                        raise FileNotFoundError(f"replay strict: input manquant: {snap_journal_enrichi}")
+                    print(json.dumps({"event": "pipeline_enrichissement_replay_use_inputs", "run_id": run_id}, ensure_ascii=False))
                 else:
+                    if journal_enrichi.exists() and not force and not resume:
+                        copier_fichier(journal_enrichi, snap_journal_enrichi, overwrite=True)
+                        copier_fichier(journal_enrichi, run_dir / "journal_episodes.enrichi.jsonl", overwrite=True)
+                        print(json.dumps({"event": "pipeline_enrichissement_skip", "run_id": run_id}, ensure_ascii=False))
+                        continue
                     n = _enrichir_journal(journal_stable, journal_enrichi, overwrite=True)
-                    shutil.copy2(journal_enrichi, run_dir / "journal_episodes.enrichi.jsonl")
+                    copier_fichier(journal_enrichi, run_dir / "journal_episodes.enrichi.jsonl", overwrite=True)
+                    copier_fichier(journal_enrichi, snap_journal_enrichi, overwrite=True)
                     print(
                         json.dumps(
                             {
@@ -372,9 +426,16 @@ class PipelineRunner:
                     )
 
             elif phase == "dataset":
-                if paires_stable.exists() and not force and not resume:
-                    print(json.dumps({"event": "pipeline_dataset_skip", "run_id": run_id}, ensure_ascii=False))
+                if mode == "replay":
+                    if not snap_paires.exists():
+                        raise FileNotFoundError(f"replay strict: input manquant: {snap_paires}")
+                    print(json.dumps({"event": "pipeline_dataset_replay_use_inputs", "run_id": run_id}, ensure_ascii=False))
                 else:
+                    if paires_stable.exists() and not force and not resume:
+                        copier_fichier(paires_stable, snap_paires, overwrite=True)
+                        copier_fichier(paires_stable, run_dir / "paires_capteurs.pt", overwrite=True)
+                        print(json.dumps({"event": "pipeline_dataset_skip", "run_id": run_id}, ensure_ascii=False))
+                        continue
                     meta = _extraire_paires(
                         journal_stable,
                         paires_stable,
@@ -382,7 +443,8 @@ class PipelineRunner:
                         cle_episode_id="episode_id",
                         dim=self.cfg_pipeline.dim_vecteur,
                     )
-                    shutil.copy2(paires_stable, run_dir / "paires_capteurs.pt")
+                    copier_fichier(paires_stable, run_dir / "paires_capteurs.pt", overwrite=True)
+                    copier_fichier(paires_stable, snap_paires, overwrite=True)
                     print(json.dumps({"event": "pipeline_dataset_ok", "run_id": run_id, "meta": meta}, ensure_ascii=False))
 
             elif phase == "entrainement":
@@ -447,6 +509,9 @@ class PipelineRunner:
         # checksums
         paths_a_hasher = [plan_path]
         for rel in [
+            "inputs/journal_episodes.jsonl",
+            "inputs/journal_episodes.enrichi.jsonl",
+            "inputs/paires_capteurs.pt",
             "journal_episodes.jsonl",
             "journal_episodes.enrichi.jsonl",
             "paires_capteurs.pt",
@@ -459,6 +524,19 @@ class PipelineRunner:
             if p.exists():
                 paths_a_hasher.append(p)
         ecrire_checksums(run_dir, paths_a_hasher)
+
+        # patch plan: inputs_fixes (chemins relatifs + sha256)
+        inputs_fixes = {}
+        for rel in [
+            "inputs/journal_episodes.jsonl",
+            "inputs/journal_episodes.enrichi.jsonl",
+            "inputs/paires_capteurs.pt",
+        ]:
+            p = run_dir / rel
+            if p.exists():
+                inputs_fixes[rel] = {"sha256": sha256_file(p)}
+        if inputs_fixes:
+            ecrire_inputs_fixes_dans_plan(plan_path, inputs_fixes)
         return plan
 
 

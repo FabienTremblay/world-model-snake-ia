@@ -441,6 +441,13 @@ def construire_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         prog="ui_cli",
         description="Exécute des épisodes snake en mode headless (batch) et journalise episodes.jsonl.",
+        epilog=(
+            "Sous-commandes disponibles (voir l'aide dédiée):\n"
+            "  ui_cli pipeline --help\n"
+            "  ui_cli preparer-agent --help\n"
+            "\n"
+            "Note: si tu exécutes `ui_cli --help`, tu es dans le mode legacy (exécution d'épisodes)."
+        ),
     )
     ap.add_argument(
         "--arene",

@@ -7,6 +7,7 @@ Ce document formalise le **pipeline canonique** pour exécuter une expérience e
 - **un pipeline = un plan** : chaque exécution écrit `plan_pipeline.json` dans un run.
 - **reproductibilité** : le plan contient seed + versions + sha256 des configs.
 - **immutabilité** : les artefacts principaux sont copiés sous le run (`artefacts/runs/<run_id>/...`).
+- **inputs figés** : les entrées (journal/dataset) sont snapshottées sous `inputs/` pour un replay strict.
 - **compat** : des *pointeurs stables* restent mis à jour sous `artefacts/` de l'expérience (pour rester compatible avec les usages actuels).
 
 ## commandes
@@ -31,6 +32,9 @@ python -m ui_cli.app.main pipeline describe-run --experience JEPA-1 --run-id <ru
 # rejouer un run (strict par défaut)
 python -m ui_cli.app.main pipeline replay --experience JEPA-1 --run-id <run_id>
 
+# relancer un run dans un NOUVEAU run_id (recalcule les inputs)
+python -m ui_cli.app.main pipeline rerun --experience JEPA-1 --from-run-id <run_id>
+
 # exporter
 python -m ui_cli.app.main pipeline export-run --experience JEPA-1 --run-id <run_id> --out /tmp/run.zip
 ```
@@ -44,6 +48,11 @@ Par défaut (`--phase all`) :
 3. `dataset` : extrait les paires (t→t+1) depuis `capteurs_compact`.
 4. `entrainement` : entraîne le modèle prédictif et écrit `agent_personne.json` + `agent_personne.poids.pt`.
 5. `epreuve` : calcule la surprise, calibre un gate et écrit `journal_agent.jsonl` + `registre_epistemique.json`.
+
+## reproductibilité: replay vs rerun
+
+- `pipeline replay` : réutilise `artefacts/runs/<run_id>/inputs/*` et restaure ces entrées vers les pointeurs stables.
+- `pipeline rerun` : crée un nouveau run, relance les phases (y compris collecte/enrich/dataset).
 
 ## conventions d'expérience
 
