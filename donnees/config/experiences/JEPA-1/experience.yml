@@ -5,8 +5,8 @@ id: JEPA-1
 description: "JEPA-1 — collecte contrôlée (fourmi) puis entraînement hypothèse prédictive capteurs projetés."
 
 arene:
-  # chemin relatif au repo (car se termine par .yml)
-  id: donnees/config/experiences/JEPA-1/arenes/fourmi_v1.yml
+  # chemin relatif au répertoire d'expérience
+  id: arenes/fourmi_v1.yml
 
 agent:
   # agent existant (plug-in)
@@ -21,15 +21,16 @@ generation:
   niveau_bruit: 0
 
 sorties:
-  journal: journal_episodes.jsonl
+  journal_basename: journal_episodes.jsonl
   capture_stdout: true
 
-# Conventions du pipeline (utilisées par `ui_cli pipeline run`).
 pipeline:
   run_tag_collecte: jepa1_collecte_fourmi
   journal_stable: artefacts/datasets/journal_episodes_fourmi.jsonl
   journal_enrichi_stable: artefacts/datasets/journal_episodes_fourmi.enrichi.jsonl
   paires_stable: artefacts/datasets/paires_capteurs.pt
+  champ_capteurs: capteurs_compact
+  dim_vecteur: 560
   config_entrainement: entrainement/config_entrainement.json
   config_epreuve: epreuve/config_epreuve.json
 

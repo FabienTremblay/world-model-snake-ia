@@ -1,7 +1,8 @@
-"""Sous-module pipeline pour `ui_cli`.
+"""Pipeline canonique (ui_cli).
 
-But:
-- exposer un point d'entrée stable: `ui_cli pipeline run ...`
-- rendre l'orchestration des phases déclarative et réutilisable entre expériences
-- éviter la duplication d'outils expérimentaux entre expériences
+Objectifs:
+- rendre l'exécution des expériences reproductible (plan + seed + checksums)
+- fournir des commandes de gestion des runs (list/describe/replay/export)
+
+Le pipeline est un objet interne : la surface publique reste `ui_cli`.
 """

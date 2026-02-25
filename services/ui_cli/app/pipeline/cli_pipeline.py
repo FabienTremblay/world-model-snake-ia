@@ -1,55 +1,120 @@
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
 
-from ui_cli.app.pipeline.pipeline_runner import executer_pipeline
+from ui_cli.app.pipeline.pipeline_runner import PipelineRunner, exporter_run
+from ui_cli.app.pipeline.repro import PlanPipeline, verifier_configs_strict
 
 
 def construire_parser_pipeline() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(
-        prog="ui_cli pipeline",
-        description="Orchestre un pipeline d'expérience (collecte → enrichissement → dataset → entrainement → epreuve).",
-    )
-
+    ap = argparse.ArgumentParser(prog="ui_cli pipeline")
     sp = ap.add_subparsers(dest="cmd", required=True)
 
-    run = sp.add_parser("run", help="Exécuter une phase (ou toutes) du pipeline.")
-    run.add_argument("--experience", required=True, help="Id d'expérience (ex: JEPA-1, JEPA-2).")
-    run.add_argument(
-        "--phase",
-        required=True,
-        choices=["collecte", "enrichissement", "dataset", "entrainement", "epreuve", "all"],
-        help="Phase à exécuter.",
-    )
-    run.add_argument(
-        "--run-tag",
-        default=None,
-        help="Tag optionnel du run (si absent, lu depuis experience.yml → pipeline.run_tag_collecte).",
-    )
-    run.add_argument(
-        "--force",
-        action="store_true",
-        help="Si activé, écrase les artefacts stabilisés (datasets/*, agents/*, poids/*, journaux/*).",
-    )
-    run.add_argument(
-        "--run-id",
-        default=None,
-        help="Optionnel: forcer un run_id (sinon auto). Utilisé surtout pour debug/replay.",
-    )
+    ap_run = sp.add_parser("run", help="Exécute un pipeline (collecte/enrichissement/dataset/entrainement/epreuve)")
+    ap_run.add_argument("--experience", required=True)
+    ap_run.add_argument("--phase", default="all", help="collecte|enrichissement|dataset|entrainement|epreuve|all")
+    ap_run.add_argument("--seed", type=int, default=0)
+    ap_run.add_argument("--resume", action="store_true")
+    ap_run.add_argument("--force", action="store_true")
+    ap_run.add_argument("--strict", action="store_true")
+
+    ap_list = sp.add_parser("list-runs", help="Liste les runs d'une expérience")
+    ap_list.add_argument("--experience", required=True)
+
+    ap_desc = sp.add_parser("describe-run", help="Décrit un run (plan + checksums)")
+    ap_desc.add_argument("--experience", required=True)
+    ap_desc.add_argument("--run-id", required=True, help="nom du répertoire sous artefacts/runs")
+
+    ap_replay = sp.add_parser("replay", help="Rejoue un run à partir de son plan")
+    ap_replay.add_argument("--experience", required=True)
+    ap_replay.add_argument("--run-id", required=True)
+    ap_replay.add_argument("--allow-drift", action="store_true", help="autorise des configs différentes du plan")
+
+    ap_export = sp.add_parser("export-run", help="Exporte un run en zip")
+    ap_export.add_argument("--experience", required=True)
+    ap_export.add_argument("--run-id", required=True)
+    ap_export.add_argument("--out", required=True)
 
     return ap
 
 
+def _phases_from_arg(s: str) -> list[str]:
+    s = (s or "").strip()
+    if s == "all":
+        return ["collecte", "enrichissement", "dataset", "entrainement", "epreuve"]
+    return [s]
+
+
 def main_pipeline(argv: list[str] | None = None) -> None:
     args = construire_parser_pipeline().parse_args(argv)
+    racine_repo = Path(".").resolve()
+
     if args.cmd == "run":
-        executer_pipeline(
-            experience_id=str(args.experience),
-            phase=str(args.phase),
-            run_tag=str(args.run_tag) if args.run_tag else None,
-            force=bool(args.force),
-            run_id=str(args.run_id) if args.run_id else None,
-        )
+        runner = PipelineRunner(racine_repo=racine_repo, experience_id=str(args.experience))
+        phases = _phases_from_arg(str(args.phase))
+        plan = runner.run(phases=phases, seed=int(args.seed), resume=bool(args.resume), force=bool(args.force), strict=bool(args.strict))
+        print(json.dumps({"event": "pipeline_run_ok", "plan": str(Path(plan.run_dir) / 'plan_pipeline.json')}, ensure_ascii=False))
         return
 
-    raise SystemExit(f"Commande inconnue: {args.cmd}")
+    if args.cmd == "list-runs":
+        runner = PipelineRunner(racine_repo=racine_repo, experience_id=str(args.experience))
+        runs = runner.list_runs()
+        items = []
+        for r in runs:
+            plan = r / "plan_pipeline.json"
+            if plan.exists():
+                try:
+                    d = json.loads(plan.read_text(encoding="utf-8"))
+                    items.append({"run_id": r.name, "date_utc": d.get("date_utc"), "phases": d.get("phases")})
+                except Exception:
+                    items.append({"run_id": r.name})
+            else:
+                items.append({"run_id": r.name})
+        print(json.dumps({"event": "pipeline_list_runs", "experience": args.experience, "runs": items}, ensure_ascii=False, indent=2))
+        return
+
+    if args.cmd == "describe-run":
+        runner = PipelineRunner(racine_repo=racine_repo, experience_id=str(args.experience))
+        run_dir = runner.bac.paths.runs_dir / str(args.run_id)
+        plan_path = run_dir / "plan_pipeline.json"
+        checksums_path = run_dir / "checksums.json"
+        payload = {
+            "event": "pipeline_describe_run",
+            "experience": args.experience,
+            "run_id": args.run_id,
+            "plan": json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else None,
+            "checksums": json.loads(checksums_path.read_text(encoding="utf-8")) if checksums_path.exists() else None,
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    if args.cmd == "replay":
+        runner = PipelineRunner(racine_repo=racine_repo, experience_id=str(args.experience))
+        run_dir = runner.bac.paths.runs_dir / str(args.run_id)
+        plan_path = run_dir / "plan_pipeline.json"
+        if not plan_path.exists():
+            raise SystemExit(f"plan introuvable: {plan_path}")
+        plan = PlanPipeline.load(plan_path)
+        if not args.allow_drift:
+            verifier_configs_strict(plan)
+        # rejoue les phases du plan (dans le même run_dir) avec resume
+        runner.run(
+            phases=list(plan.phases),
+            seed=int(plan.seed),
+            resume=True,
+            force=False,
+            strict=not bool(args.allow_drift),
+            replay_run_dir=run_dir,
+        )
+        print(json.dumps({"event": "pipeline_replay_ok", "run_id": args.run_id}, ensure_ascii=False))
+        return
+
+    if args.cmd == "export-run":
+        runner = PipelineRunner(racine_repo=racine_repo, experience_id=str(args.experience))
+        run_dir = runner.bac.paths.runs_dir / str(args.run_id)
+        out_zip = Path(str(args.out)).expanduser().resolve()
+        exporter_run(run_dir, out_zip)
+        print(json.dumps({"event": "pipeline_export_ok", "run_id": args.run_id, "zip": str(out_zip)}, ensure_ascii=False))
+        return

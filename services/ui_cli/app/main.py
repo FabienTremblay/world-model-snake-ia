@@ -616,7 +616,6 @@ def main(argv: list[str] | None = None) -> None:
     if len(argv) >= 1 and argv[0] == "pipeline":
         from ui_cli.app.pipeline.cli_pipeline import main_pipeline
 
-        # délègue au sous-cli pipeline
         main_pipeline(argv[1:])
         return
     # ------------------------------------------------------------

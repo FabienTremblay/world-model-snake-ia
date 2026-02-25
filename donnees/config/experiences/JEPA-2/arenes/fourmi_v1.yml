@@ -1,9 +1,7 @@
 version: "snake_arene_v0"
-id: "jepa1_fourmi_v1"
+id: "jepa2_fourmi_v1"
 
-# Arène simple pour générer rapidement des observations variées.
-# Objectif JEPA-1 : produire un journal exploitable pour (t -> t+1)
-# sur `capteurs_compact` (capteurs projetés).
+# Copie de JEPA-1 (arène fourmi v1) — JEPA-2
 
 grille:
   largeur: 14

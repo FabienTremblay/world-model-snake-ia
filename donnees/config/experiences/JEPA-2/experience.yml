@@ -1,16 +1,13 @@
 # donnees/config/experiences/JEPA-2/experience.yml
-# Bac à sable JEPA-2 (évolution isolée)
 
 id: JEPA-2
-description: "JEPA-2 — même pipeline que JEPA-1, mais isolé pour itérer sur les prochaines évolutions."
+description: "JEPA-2 — itération pour isoler les évolutions"
 
 arene:
-  id: donnees/config/experiences/JEPA-2/arenes/fourmi_v1.yml
+  id: arenes/fourmi_v1.yml
 
 agent:
   id: snake_collectif_v1_fourmi
-
-latent: checksum
 
 generation:
   episodes: 30
@@ -19,13 +16,22 @@ generation:
   niveau_bruit: 0
 
 sorties:
-  journal: journal_episodes.jsonl
+  run_dir: artefacts/runs
+  journal_basename: journal_episodes.jsonl
   capture_stdout: true
 
 pipeline:
+  # tag utilisé pour repérer le run de collecte (produit par ui_cli)
   run_tag_collecte: jepa2_collecte_fourmi
+
+  # pointeurs stables (compat)
   journal_stable: artefacts/datasets/journal_episodes_fourmi.jsonl
   journal_enrichi_stable: artefacts/datasets/journal_episodes_fourmi.enrichi.jsonl
   paires_stable: artefacts/datasets/paires_capteurs.pt
+
+  champ_capteurs: capteurs_compact
+  dim_vecteur: 560
+
+  # configs (références relatives à ce répertoire)
   config_entrainement: entrainement/config_entrainement.json
   config_epreuve: epreuve/config_epreuve.json
