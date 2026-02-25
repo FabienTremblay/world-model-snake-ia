@@ -6,4 +6,4 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-python outils/entrainer_hypothese_pred_capteurs_v1.py   --config entrainement/config_entrainement.json
+python outils/entrainer_v2.py --config entrainement/config_entrainement.json --mode entrainement

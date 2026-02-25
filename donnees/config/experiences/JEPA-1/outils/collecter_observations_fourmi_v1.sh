@@ -49,11 +49,11 @@ echo "[JEPA-1] OK: $JOURNAL_ENRICHI"
 
 # Extraction paires capteurs (base64 -> vecteur 560)
 PAIRES="$EXP_DIR/artefacts/datasets/paires_capteurs.pt"
-python "$EXP_DIR/outils/extraire_paires_capteurs_depuis_journal.py" \
+python "$EXP_DIR/outils/extraire_paires_v2.py" \
   --journal "$JOURNAL" \
   --sortie "$PAIRES" \
   --champ-capteurs capteurs_compact \
-  --dim 560 \
-  --mode-string base64_bytes
+  --cle-episode-id episode_id \
+  --dim 560
 
 echo "[JEPA-1] OK: $PAIRES"
