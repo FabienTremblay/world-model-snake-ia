@@ -28,13 +28,25 @@ python -m ui_cli.app.main \
   --run-tag "$RUN_TAG" \
   --capture-stdout
 
-# Par convention JEPA-1: le script de collecte écrit ici
-JOURNAL="$EXP_DIR/artefacts/datasets/journal_episodes_fourmi.jsonl"
-if [[ ! -f "$JOURNAL" ]]; then
-  echo "[JEPA-1] ERREUR: journal introuvable: $JOURNAL" >&2
+# ui_cli écrit le journal dans un run horodaté.
+# On récupère le run le plus récent correspondant au tag.
+RUN_DIR="$(ls -1dt "$EXP_DIR/artefacts/runs/"*"$RUN_TAG"* 2>/dev/null | head -n 1 || true)"
+if [[ -z "$RUN_DIR" ]]; then
+  echo "[JEPA-1] ERREUR: aucun run trouvé sous $EXP_DIR/artefacts/runs (tag=$RUN_TAG)" >&2
   exit 1
 fi
-echo "[JEPA-1] OK: $JOURNAL"
+
+JOURNAL_RUN="$RUN_DIR/journal_episodes.jsonl"
+if [[ ! -f "$JOURNAL_RUN" ]]; then
+  echo "[JEPA-1] ERREUR: journal introuvable dans run: $JOURNAL_RUN" >&2
+  exit 1
+fi
+
+# On copie le journal dans artefacts/datasets pour conserver les conventions JEPA-1.
+JOURNAL="$EXP_DIR/artefacts/datasets/journal_episodes_fourmi.jsonl"
+mkdir -p "$(dirname "$JOURNAL")"
+cp -f "$JOURNAL_RUN" "$JOURNAL"
+echo "[JEPA-1] OK: $JOURNAL (source: $JOURNAL_RUN)"
 
 # Journal enrichi (non-bloquant si tu ne l'utilises pas encore)
 JOURNAL_ENRICHI="$EXP_DIR/artefacts/datasets/journal_episodes_fourmi.enrichi.jsonl"

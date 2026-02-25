@@ -1,19 +1,40 @@
-"""
+"""donnees/config/experiences/JEPA-1/outils/entrainer_v2.py
+
 Script d'entraînement JEPA-1 utilisant les modules refactorisés.
+
+But:
+- conserver des points d'entrée simples (.sh) pour JEPA-1
+- sans dépendre d'un PYTHONPATH externe
+- en important les modules canoniques sous services/agent_service
+
 Remplace: entrainer_hypothese_pred_capteurs_v1.py
 """
+
+from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
 
-# Ajouter le chemin des services
-sys.path.insert(0, str(Path(__file__).parents[5] / "services/agent_service"))
 
-from app.preparation_agent.extracteurs import ExtracteurPairesCapteurs
-from app.preparation_agent.entraineur_modele_predictif import EntraineurModelePredicdictif
-from app.modele_monde.predictif import ModelePredCapteursV1
-from app.epistemique_v2.gates import GateSurprise, ConfigGate
+def _ajouter_racine_repo_au_pythonpath() -> None:
+    """Ajoute la racine du repo (celle qui contient 'services/') au sys.path."""
+    p = Path(__file__).resolve()
+    for parent in [p] + list(p.parents):
+        if (parent / "services").exists():
+            sys.path.insert(0, str(parent))
+            return
+    raise RuntimeError("Impossible de trouver la racine du repo (dossier 'services' introuvable).")
+
+
+_ajouter_racine_repo_au_pythonpath()
+
+from services.agent_service.app.preparation_agent.extracteurs import ExtracteurPairesCapteurs
+from services.agent_service.app.preparation_agent.entraineur_modele_predictif import (
+    EntraineurModelePredicdictif,
+)
+from services.agent_service.app.modele_monde.predictif import ModelePredCapteursV1
+from services.agent_service.app.epistemique_v2.gates import GateSurprise, ConfigGate
 
 
 def charger_config(config_path: str):
@@ -33,7 +54,6 @@ def entrainer_mode(config_path: str) -> None:
     
     # 1. Charger les paires
     paires_path = base_dir / cfg["dataset_paires_pt"]
-    from app.preparation_agent.extracteurs import ExtracteurPairesCapteurs
     x, y, metadata = ExtracteurPairesCapteurs.charger_paires(str(paires_path))
     
     # 2. Créer le modèle
@@ -98,7 +118,6 @@ def eprouver_mode(config_path: str) -> None:
     x, y, _ = ExtracteurPairesCapteurs.charger_paires(str(paires_path))
     
     # 3. Calculer surprises
-    from app.preparation_agent.entraineur_modele_predictif import EntraineurModelePredicdictif
     entraineur = EntraineurModelePredicdictif(
         model=model,
         device=cfg["epreuve"].get("device", "cpu")
