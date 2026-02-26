@@ -1,0 +1,43 @@
+{
+  "experience": "JEPA-3",
+  "dataset_paires_pt": "artefacts/datasets/paires_capteurs.pt",
+  "sortie_dir": "artefacts",
+  "entrainement": {
+    "epochs": 8,
+    "batch_size": 256,
+    "lr": 0.001,
+    "seed": 123,
+    "device": "cpu"
+  },
+  "capteurs": {
+    "dim_vecteur": 560,
+    "vectorisation": {
+      "mode": "base64_bytes",
+      "n_grams": 3
+    }
+  },
+  "hypotheses": [
+    {
+      "id": "h1",
+      "modele": {
+        "type": "mlp_v1",
+        "hyperparams": {
+          "hidden": 64
+        }
+      },
+      "entrainement": {
+        "weight_decay": 0.0
+      }
+    },
+    {
+      "id": "h2",
+      "modele": {
+        "type": "lineaire_v1",
+        "hyperparams": {}
+      },
+      "entrainement": {
+        "weight_decay": 0.0005
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+version: "snake_arene_v0"
+id: "jepa1_fourmi_v1"
+
+# Arène simple pour générer rapidement des observations variées.
+# Objectif JEPA-1 : produire un journal exploitable pour (t -> t+1)
+# sur `capteurs_compact` (capteurs projetés).
+
+grille:
+  largeur: 14
+  hauteur: 10
+
+reproductibilite:
+  seed: 11
+
+objets:
+  palette:
+    sol:           { teinte: 200, intensite: 40,  motif: 0, clignote: 0 }
+    mur:           { teinte: 210, intensite: 120, motif: 3, clignote: 0 }
+    serpent_corps: { teinte: 120, intensite: 160, motif: 2, clignote: 0 }
+    serpent_tete:  { teinte: 120, intensite: 230, motif: 5, clignote: 0 }
+    nourriture:    { teinte: 30,  intensite: 220, motif: 6, clignote: 1 }
+    porte_fermee:  { teinte: 300, intensite: 180, motif: 1, clignote: 0 }
+    porte_ouverte: { teinte: 300, intensite: 240, motif: 1, clignote: 1 }
+
+  instances:
+    nourriture:
+      nb: 2
+
+recompenses:
+  epsilon_par_pas: -0.01
+  bonus_fin: 0.0
+
+capteurs:
+  bruit:
+    niveau_defaut: 0
+    distribution: "uniforme"

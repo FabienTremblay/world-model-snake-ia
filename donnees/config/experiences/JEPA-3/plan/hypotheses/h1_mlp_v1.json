@@ -1,0 +1,32 @@
+{
+  "id": "h1_mlp_v1",
+  "nom": "prédiction capteurs projetés t+1 (mlp)",
+  "type": "hypothese_pred_capteurs_v1",
+  "portee": [
+    "prediction_monde",
+    "gate"
+  ],
+  "interfaces": {
+    "entree": "capteurs_proj_vect_t",
+    "sortie": [
+      "capteurs_proj_vect_t1",
+      "surprise"
+    ]
+  },
+  "hyperparams": {
+    "hidden": 64,
+    "dropout": 0.0
+  },
+  "regles": {
+    "surprise": {
+      "metrique": "mse",
+      "seuil_connu": 0.1
+    },
+    "gate": {
+      "si_surprise_faible": "connu_planifier",
+      "si_surprise_forte": "inconnu_explorer"
+    }
+  },
+  "version": "1.0.0",
+  "commentaire": "Hypothèse principale (MLP) — sert de contrepoint au baseline linéaire."
+}

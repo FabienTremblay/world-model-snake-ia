@@ -147,3 +147,7 @@ def main_pipeline(argv: list[str] | None = None) -> None:
         exporter_run(run_dir, out_zip)
         print(json.dumps({"event": "pipeline_export_ok", "run_id": args.run_id, "zip": str(out_zip)}, ensure_ascii=False))
         return
+
+
+if __name__ == "__main__":
+    main_pipeline()

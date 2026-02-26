@@ -172,6 +172,126 @@ def _entrainer_depuis_cfg(config_path: Path, *, exp_dir: Path, run_dir: Path) ->
     return {"poids_pt": poids_path, "agent_json": spec_path}
 
 
+def _stats_1d(values) -> Dict[str, Any]:
+    import numpy as np
+
+    v = np.asarray(values, dtype=float)
+    if v.size == 0:
+        return {"n": 0}
+    qs = [0.5, 0.9, 0.95, 0.99]
+    qv = {f"q{int(q*100):02d}": float(np.quantile(v, q)) for q in qs}
+    return {
+        "n": int(v.size),
+        "mean": float(v.mean()),
+        "std": float(v.std()),
+        "min": float(v.min()),
+        "max": float(v.max()),
+        "quantiles": qv,
+    }
+
+
+def _creer_modele_pred(*, type_modele: str, dim: int, hyperparams: Dict[str, Any]):
+    """Factory minimale de modèles prédictifs.
+
+    Objectif: permettre JEPA-3/JEPA-4 avec deux hypothèses à biais différent.
+    """
+    from services.agent_service.app.modele_monde.predictif import ModelePredCapteursV1, ModelePredCapteursLineaireV1
+
+    t = (type_modele or "").strip()
+    if t in {"mlp", "mlp_v1", "ModelePredCapteursV1"}:
+        hidden = int(hyperparams.get("hidden", 64))
+        return ModelePredCapteursV1(dim_in=dim, hidden=hidden)
+    if t in {"lineaire", "lineaire_v1", "ModelePredCapteursLineaireV1"}:
+        return ModelePredCapteursLineaireV1(dim_in=dim)
+    raise ValueError(f"type_modele inconnu: {type_modele}")
+
+
+def _entrainer_multi_depuis_cfg(config_path: Path, *, exp_dir: Path, run_dir: Path) -> Dict[str, Any]:
+    """Entraîne plusieurs hypothèses, puis écrit des pointeurs stables.
+
+    Convention d'écriture:
+      run_dir/entrainement/hypotheses/<id>/{poids.pt, rapport.json}
+      exp_dir/artefacts/poids/hypotheses/<id>.pt  (pointeurs stables)
+    """
+    from services.agent_service.app.preparation_agent.extracteurs import ExtracteurPairesCapteurs
+    from services.agent_service.app.preparation_agent.entraineur_modele_predictif import EntraineurModelePredicdictif
+
+    cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    hyps = cfg.get("hypotheses")
+    if not isinstance(hyps, list) or len(hyps) < 2:
+        raise ValueError("config_entrainement: hypotheses[] (>=2) requis pour entraînement multi")
+
+    paires_path = (exp_dir / cfg["dataset_paires_pt"]).resolve()
+    x, y, _metadata = ExtracteurPairesCapteurs.charger_paires(str(paires_path))
+
+    dim = int(cfg["capteurs"]["dim_vecteur"])
+    base_entr = cfg.get("entrainement", {})
+
+    produced = {"hypotheses": {}}
+    for h in hyps:
+        hid = str(h.get("id") or "")
+        if not hid:
+            raise ValueError("config_entrainement.hypotheses[].id requis")
+        modele_cfg = h.get("modele") if isinstance(h, dict) else None
+        modele_cfg = modele_cfg if isinstance(modele_cfg, dict) else {}
+        type_modele = str(modele_cfg.get("type") or "mlp_v1")
+        hyperparams = modele_cfg.get("hyperparams") if isinstance(modele_cfg.get("hyperparams"), dict) else {}
+        model = _creer_modele_pred(type_modele=type_modele, dim=dim, hyperparams=hyperparams)
+
+        entr = dict(base_entr)
+        # overrides par hypothèse
+        if isinstance(h.get("entrainement"), dict):
+            entr.update(h["entrainement"])
+
+        entraineur = EntraineurModelePredicdictif(
+            model=model,
+            device=str(entr.get("device", "cpu")),
+            lr=float(entr["lr"]),
+            weight_decay=float(entr.get("weight_decay", 0.0) or 0.0),
+            batch_size=int(entr["batch_size"]),
+            epochs=int(entr["epochs"]),
+            seed=int(entr.get("seed", 0)),
+        )
+
+        rapport = entraineur.entrainer(x, y, verbose=True)
+
+        hyp_dir = run_dir / "entrainement" / "hypotheses" / hid
+        hyp_dir.mkdir(parents=True, exist_ok=True)
+        poids_path = hyp_dir / "poids.pt"
+        model.sauvegarder(str(poids_path), metadata={"rapport": rapport, "modele": {"type": type_modele, "hyperparams": hyperparams}})
+        (hyp_dir / "rapport.json").write_text(json.dumps({"rapport": rapport, "modele": {"type": type_modele, "hyperparams": hyperparams}}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        produced["hypotheses"][hid] = {"poids_pt": poids_path, "type": type_modele, "hyperparams": hyperparams, "rapport": rapport}
+
+        # pointeur stable
+        stable_poids_dir = exp_dir / "artefacts" / "poids" / "hypotheses"
+        stable_poids_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(poids_path, stable_poids_dir / f"{hid}.pt")
+
+    # spec stable (simple)
+    spec = {
+        "experience": cfg.get("experience"),
+        "hypotheses": {
+            hid: {
+                "poids_pt": str((exp_dir / "artefacts" / "poids" / "hypotheses" / f"{hid}.pt").resolve()),
+                "type": d["type"],
+                "hyperparams": d["hyperparams"],
+            }
+            for hid, d in produced["hypotheses"].items()
+        },
+    }
+    spec_path = run_dir / "entrainement" / "agents" / "agent_personne.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(json.dumps(spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # compat: copie stable
+    stable_agents = exp_dir / "artefacts" / "agents"
+    stable_agents.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(spec_path, stable_agents / "agent_personne.json")
+
+    produced["agent_json"] = spec_path
+    return produced
+
+
 def _epreuve_depuis_cfg(config_path: Path, *, exp_dir: Path, run_dir: Path) -> Dict[str, Path]:
     from services.agent_service.app.preparation_agent.extracteurs import ExtracteurPairesCapteurs
     from services.agent_service.app.preparation_agent.entraineur_modele_predictif import EntraineurModelePredicdictif
@@ -227,6 +347,214 @@ def _epreuve_depuis_cfg(config_path: Path, *, exp_dir: Path, run_dir: Path) -> D
     registre_path.write_text(json.dumps(registre, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     return {"journal_agent": journal_agent_path, "registre": registre_path}
+
+
+def _epreuve_multi_depuis_cfg(config_path: Path, *, exp_dir: Path, run_dir: Path) -> Dict[str, Path]:
+    """Épreuve multi-hypothèses.
+
+    Supporte 2 modes:
+      - competition (JEPA-3): surprise=min(s1,s2), winner=argmin
+      - ensemble (JEPA-4): surprise_ens=MSE(yhat_ens,y), disagree=MSE(yhat1,yhat2)
+    """
+    import numpy as np
+    import torch
+
+    from services.agent_service.app.preparation_agent.extracteurs import ExtracteurPairesCapteurs
+    from services.agent_service.app.preparation_agent.entraineur_modele_predictif import EntraineurModelePredicdictif
+    from services.agent_service.app.epistemique_v2.gates import GateSurprise, ConfigGate
+
+    cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    mode = str(cfg.get("mode") or "competition")
+    hyps = cfg.get("hypotheses")
+    if not isinstance(hyps, list) or len(hyps) != 2:
+        raise ValueError("config_epreuve: hypotheses[] doit contenir exactement 2 hypothèses")
+
+    # dataset
+    paires_path = (exp_dir / cfg["dataset_paires_pt"]).resolve()
+    x, y, _ = ExtracteurPairesCapteurs.charger_paires(str(paires_path))
+    device = str(cfg.get("epreuve", {}).get("device", "cpu"))
+    x = x.to(device)
+    y = y.to(device)
+
+    # modèles
+    preds = {}
+    for h in hyps:
+        hid = str(h.get("id") or "")
+        if not hid:
+            raise ValueError("config_epreuve.hypotheses[].id requis")
+        type_modele = str(h.get("type_modele") or "mlp_v1")
+        hyperparams = h.get("hyperparams") if isinstance(h.get("hyperparams"), dict) else {}
+        poids_pt = (exp_dir / str(h.get("poids_pt"))).resolve()
+        if not poids_pt.exists():
+            raise FileNotFoundError(f"poids introuvable: {poids_pt}")
+
+        # créer instance + charger via checkpoint
+        if type_modele in {"mlp", "mlp_v1", "ModelePredCapteursV1"}:
+            from services.agent_service.app.modele_monde.predictif import ModelePredCapteursV1
+
+            model = ModelePredCapteursV1.depuis_checkpoint(str(poids_pt), device=device)
+        elif type_modele in {"lineaire", "lineaire_v1", "ModelePredCapteursLineaireV1"}:
+            from services.agent_service.app.modele_monde.predictif import ModelePredCapteursLineaireV1
+
+            model = ModelePredCapteursLineaireV1.depuis_checkpoint(str(poids_pt), device=device)
+        else:
+            # fallback: factory (sans chargement) + load_state_dict
+            model = _creer_modele_pred(type_modele=type_modele, dim=int(cfg["capteurs"]["dim_vecteur"]), hyperparams=hyperparams)
+            checkpoint = torch.load(str(poids_pt), map_location=device)
+            model.load_state_dict(checkpoint["state_dict"])
+            model = model.to(device)
+        model.eval()
+        with torch.no_grad():
+            preds[hid] = model(x)
+
+    h1, h2 = [str(h["id"]) for h in hyps]
+    yhat1 = preds[h1]
+    yhat2 = preds[h2]
+
+    # métriques
+    def mse_par_exemple(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        return torch.nn.functional.mse_loss(a, b, reduction='none').mean(dim=1)
+
+    s1_t = mse_par_exemple(yhat1, y)
+    s2_t = mse_par_exemple(yhat2, y)
+    s1 = s1_t.detach().cpu().numpy().astype(float)
+    s2 = s2_t.detach().cpu().numpy().astype(float)
+
+    sorties = cfg.get("sorties") if isinstance(cfg.get("sorties"), dict) else {}
+
+    if mode == "competition":
+        winner = np.where(s1 <= s2, 1, 2)
+        surprise = np.minimum(s1, s2)
+
+        gate_cfg = cfg.get("gate", {})
+        config_gate = ConfigGate(
+            mode=str(gate_cfg.get("mode", "quantile")),
+            quantile=float(gate_cfg.get("quantile", 0.90)),
+            seuil_connu=float(gate_cfg.get("seuil_connu", 0.10)),
+        )
+        gate = GateSurprise(config_gate)
+        gate.calibrer(torch.tensor(surprise))
+
+        journal_agent_path = run_dir / "epreuve" / "journal_agent.jsonl"
+        journal_agent_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(journal_agent_path, "w", encoding="utf-8") as jf:
+            for idx in range(int(len(surprise))):
+                sv = float(surprise[idx])
+                mode_gate, _ = gate.decider_mode(sv)
+                action = cfg["policy"]["strategie_connu"] if mode_gate == "connu_exploiter" else cfg["policy"]["strategie_inconnu"]
+                jf.write(
+                    json.dumps(
+                        {
+                            "idx": idx,
+                            "s1": float(s1[idx]),
+                            "s2": float(s2[idx]),
+                            "winner": "h1" if int(winner[idx]) == 1 else "h2",
+                            "surprise": sv,
+                            "seuil_connu": float(gate.seuil_calibre),
+                            "mode": mode_gate,
+                            "action": action,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+        registre_path = run_dir / "epreuve" / "registre_epistemique.json"
+        reg = {
+            "experience": cfg.get("experience"),
+            "mode": "competition",
+            "hypotheses": {"h1": h1, "h2": h2},
+            "win_rate_h1": float((winner == 1).mean()),
+            "win_rate_h2": float((winner == 2).mean()),
+            "stats": {"s1": _stats_1d(s1), "s2": _stats_1d(s2), "surprise": _stats_1d(surprise)},
+            "gate": gate.to_dict(),
+            "effets_gate": {
+                "ratio_connu": float(np.mean(surprise <= float(gate.seuil_calibre))),
+                "ratio_inconnu": float(np.mean(surprise > float(gate.seuil_calibre))),
+            },
+        }
+        registre_path.write_text(json.dumps(reg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return {"journal_agent": journal_agent_path, "registre": registre_path}
+
+    if mode == "ensemble":
+        yhat_ens = (yhat1 + yhat2) / 2.0
+        surprise_ens_t = mse_par_exemple(yhat_ens, y)
+        disagree_t = mse_par_exemple(yhat1, yhat2)
+        surprise_ens = surprise_ens_t.detach().cpu().numpy().astype(float)
+        disagree = disagree_t.detach().cpu().numpy().astype(float)
+
+        gate_cfg = cfg.get("gate", {})
+        q_surprise = float(gate_cfg.get("quantile_surprise", gate_cfg.get("quantile", 0.90)))
+        q_disagree = float(gate_cfg.get("quantile_disagree", 0.90))
+
+        g_sur = GateSurprise(ConfigGate(mode="quantile", quantile=q_surprise, seuil_connu=float(gate_cfg.get("seuil_surprise", 0.10))))
+        g_dis = GateSurprise(ConfigGate(mode="quantile", quantile=q_disagree, seuil_connu=float(gate_cfg.get("seuil_disagree", 0.10))))
+        g_sur.calibrer(torch.tensor(surprise_ens))
+        g_dis.calibrer(torch.tensor(disagree))
+
+        journal_agent_path = run_dir / "epreuve" / "journal_agent.jsonl"
+        journal_agent_path.parent.mkdir(parents=True, exist_ok=True)
+
+        inconnu_par_surprise = 0
+        inconnu_par_disagree = 0
+        with open(journal_agent_path, "w", encoding="utf-8") as jf:
+            for idx in range(int(len(surprise_ens))):
+                sev = float(surprise_ens[idx])
+                dev = float(disagree[idx])
+
+                inconnu_sur = sev > float(g_sur.seuil_calibre)
+                inconnu_dis = dev > float(g_dis.seuil_calibre)
+                if inconnu_sur:
+                    inconnu_par_surprise += 1
+                if inconnu_dis:
+                    inconnu_par_disagree += 1
+
+                inconnu = inconnu_sur or inconnu_dis
+                mode_gate = "inconnu_explorer" if inconnu else "connu_exploiter"
+                action = cfg["policy"]["strategie_connu"] if mode_gate == "connu_exploiter" else cfg["policy"]["strategie_inconnu"]
+
+                jf.write(
+                    json.dumps(
+                        {
+                            "idx": idx,
+                            "s1": float(s1[idx]),
+                            "s2": float(s2[idx]),
+                            "surprise_ens": sev,
+                            "disagree": dev,
+                            "seuil_surprise": float(g_sur.seuil_calibre),
+                            "seuil_disagree": float(g_dis.seuil_calibre),
+                            "mode": mode_gate,
+                            "action": action,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+        registre_path = run_dir / "epreuve" / "registre_epistemique.json"
+        corr = float(np.corrcoef(disagree, surprise_ens)[0, 1]) if len(disagree) > 1 else 0.0
+        reg = {
+            "experience": cfg.get("experience"),
+            "mode": "ensemble",
+            "hypotheses": {"h1": h1, "h2": h2},
+            "stats": {"surprise_ens": _stats_1d(surprise_ens), "disagree": _stats_1d(disagree), "s1": _stats_1d(s1), "s2": _stats_1d(s2)},
+            "correlation_disagree_surprise_ens": corr,
+            "gate": {
+                "seuil_surprise": float(g_sur.seuil_calibre),
+                "seuil_disagree": float(g_dis.seuil_calibre),
+                "quantile_surprise": q_surprise,
+                "quantile_disagree": q_disagree,
+            },
+            "effets_gate": {
+                "ratio_inconnu_total": float(np.mean((surprise_ens > float(g_sur.seuil_calibre)) | (disagree > float(g_dis.seuil_calibre)))),
+                "ratio_inconnu_par_surprise": float(inconnu_par_surprise / max(1, len(surprise_ens))),
+                "ratio_inconnu_par_disagree": float(inconnu_par_disagree / max(1, len(surprise_ens))),
+            },
+        }
+        registre_path.write_text(json.dumps(reg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return {"journal_agent": journal_agent_path, "registre": registre_path}
+
+    raise ValueError(f"mode d'épreuve inconnu: {mode}")
 
 
 class PipelineRunner:
@@ -454,27 +782,34 @@ class PipelineRunner:
                 if out_marker.exists() and not force and not resume:
                     print(json.dumps({"event": "pipeline_entrainement_skip", "run_id": run_id}, ensure_ascii=False))
                 else:
-                    produced = _entrainer_depuis_cfg((self.exp_dir / self.cfg_pipeline.config_entrainement).resolve(), exp_dir=self.exp_dir, run_dir=run_dir)
+                    cfg_path = (self.exp_dir / self.cfg_pipeline.config_entrainement).resolve()
+                    cfg_json = json.loads(cfg_path.read_text(encoding="utf-8"))
+                    if isinstance(cfg_json.get("hypotheses"), list):
+                        produced = _entrainer_multi_depuis_cfg(cfg_path, exp_dir=self.exp_dir, run_dir=run_dir)
+                        print(json.dumps({"event": "pipeline_entrainement_ok", "run_id": run_id, "mode": "multi", "agent_json": str(produced.get("agent_json"))}, ensure_ascii=False))
+                    else:
+                        produced = _entrainer_depuis_cfg(cfg_path, exp_dir=self.exp_dir, run_dir=run_dir)
 
-                    # pointeurs stables (compat)
-                    stable_agents = self.exp_dir / "artefacts" / "agents"
-                    stable_poids = self.exp_dir / "artefacts" / "poids"
-                    stable_agents.mkdir(parents=True, exist_ok=True)
-                    stable_poids.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(produced["agent_json"], stable_agents / "agent_personne.json")
-                    shutil.copy2(produced["poids_pt"], stable_poids / "agent_personne.poids.pt")
+                        # pointeurs stables (compat)
+                        stable_agents = self.exp_dir / "artefacts" / "agents"
+                        stable_poids = self.exp_dir / "artefacts" / "poids"
+                        stable_agents.mkdir(parents=True, exist_ok=True)
+                        stable_poids.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(produced["agent_json"], stable_agents / "agent_personne.json")
+                        shutil.copy2(produced["poids_pt"], stable_poids / "agent_personne.poids.pt")
 
-                    print(
-                        json.dumps(
-                            {
-                                "event": "pipeline_entrainement_ok",
-                                "run_id": run_id,
-                                "agent_json": str(produced["agent_json"]),
-                                "poids_pt": str(produced["poids_pt"]),
-                            },
-                            ensure_ascii=False,
+                        print(
+                            json.dumps(
+                                {
+                                    "event": "pipeline_entrainement_ok",
+                                    "run_id": run_id,
+                                    "mode": "mono",
+                                    "agent_json": str(produced["agent_json"]),
+                                    "poids_pt": str(produced["poids_pt"]),
+                                },
+                                ensure_ascii=False,
+                            )
                         )
-                    )
 
             elif phase == "epreuve":
                 if not self.cfg_pipeline.config_epreuve:
@@ -483,7 +818,12 @@ class PipelineRunner:
                 if out_marker.exists() and not force and not resume:
                     print(json.dumps({"event": "pipeline_epreuve_skip", "run_id": run_id}, ensure_ascii=False))
                 else:
-                    produced = _epreuve_depuis_cfg((self.exp_dir / self.cfg_pipeline.config_epreuve).resolve(), exp_dir=self.exp_dir, run_dir=run_dir)
+                    cfg_path = (self.exp_dir / self.cfg_pipeline.config_epreuve).resolve()
+                    cfg_json = json.loads(cfg_path.read_text(encoding="utf-8"))
+                    if isinstance(cfg_json.get("hypotheses"), list):
+                        produced = _epreuve_multi_depuis_cfg(cfg_path, exp_dir=self.exp_dir, run_dir=run_dir)
+                    else:
+                        produced = _epreuve_depuis_cfg(cfg_path, exp_dir=self.exp_dir, run_dir=run_dir)
 
                     stable_journaux = self.exp_dir / "artefacts" / "journaux"
                     stable_journaux.mkdir(parents=True, exist_ok=True)
@@ -523,6 +863,13 @@ class PipelineRunner:
             p = run_dir / rel
             if p.exists():
                 paths_a_hasher.append(p)
+
+        # multi: hash tout ce qui est sous entrainement/hypotheses et epreuve (fichiers seulement)
+        for sub in [run_dir / "entrainement" / "hypotheses", run_dir / "epreuve"]:
+            if sub.exists():
+                for fp in sub.rglob("*"):
+                    if fp.is_file():
+                        paths_a_hasher.append(fp)
         ecrire_checksums(run_dir, paths_a_hasher)
 
         # patch plan: inputs_fixes (chemins relatifs + sha256)

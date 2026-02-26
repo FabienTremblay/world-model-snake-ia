@@ -1,0 +1,44 @@
+{
+  "agent_personne_id": "agent_personne_jepa4_v1",
+  "experience": "JEPA-4",
+  "description": "JEPA-4 : deux hypothèses prédictives (mlp vs linéaire) utilisées en ensemble + désaccord.",
+  "contrat_actions": [
+    "avant",
+    "observer_gauche",
+    "observer_droite"
+  ],
+  "tronc": {
+    "type": "tronc_encodeur_mlp_v1",
+    "dim_latent": 64,
+    "dim_intermediaire": 128
+  },
+  "hypotheses": [
+    {
+      "id": "h1_mlp_v1",
+      "ref": "plan/hypotheses/h1_mlp_v1.json",
+      "roles": [
+        "prediction_monde",
+        "gate"
+      ]
+    },
+    {
+      "id": "h2_lineaire_v1",
+      "ref": "plan/hypotheses/h2_lineaire_v1.json",
+      "roles": [
+        "prediction_monde",
+        "gate"
+      ]
+    }
+  ],
+  "tetes": [
+    {
+      "id": "tete_policy_3_actions_v1",
+      "type": "policy_3_actions_mlp_v1",
+      "actions": [
+        "avant",
+        "observer_gauche",
+        "observer_droite"
+      ]
+    }
+  ]
+}

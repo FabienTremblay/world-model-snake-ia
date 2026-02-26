@@ -45,6 +45,7 @@ class EntraineurModelePredicdictif:
         model: torch.nn.Module,
         device: str = "cpu",
         lr: float = 0.001,
+        weight_decay: float = 0.0,
         batch_size: int = 128,
         epochs: int = 5,
         seed: Optional[int] = None
@@ -68,11 +69,16 @@ class EntraineurModelePredicdictif:
         self.model = model.to(device)
         self.device = device
         self.lr = lr
+        self.weight_decay = weight_decay
         self.batch_size = batch_size
         self.epochs = epochs
         self.seed = seed
         
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=self.lr,
+            weight_decay=float(self.weight_decay or 0.0),
+        )
         self.historique_mse: List[float] = []
         
         if seed is not None:
