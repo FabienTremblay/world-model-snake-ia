@@ -1,0 +1,8 @@
+id: refactoRapports
+version: v1
+objectif: "Exécuter le catalogue de diagnostics SAI-A105 sur un run et produire un rapport standard."
+entrees:
+  - run_path
+sorties:
+  - rapport_diagnostics.md
+  - diagnostics.json
