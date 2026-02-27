@@ -355,6 +355,7 @@ def _epreuve_multi_depuis_cfg(config_path: Path, *, exp_dir: Path, run_dir: Path
     Supporte 2 modes:
       - competition (JEPA-3): surprise=min(s1,s2), winner=argmin
       - ensemble (JEPA-4): surprise_ens=MSE(yhat_ens,y), disagree=MSE(yhat1,yhat2)
+      - adaptive (JEPA-5): poids adaptatifs (EMA + softmax), yhat = w1*yhat1 + w2*yhat2
     """
     import numpy as np
     import torch
@@ -502,8 +503,8 @@ def _epreuve_multi_depuis_cfg(config_path: Path, *, exp_dir: Path, run_dir: Path
                 sev = float(surprise_ens[idx])
                 dev = float(disagree[idx])
 
-                inconnu_sur = sev > float(g_sur.seuil_calibre)
-                inconnu_dis = dev > float(g_dis.seuil_calibre)
+                inconnu_sur = sev >= float(g_sur.seuil_calibre)
+                inconnu_dis = dev >= float(g_dis.seuil_calibre)
                 if inconnu_sur:
                     inconnu_par_surprise += 1
                 if inconnu_dis:
@@ -546,9 +547,156 @@ def _epreuve_multi_depuis_cfg(config_path: Path, *, exp_dir: Path, run_dir: Path
                 "quantile_disagree": q_disagree,
             },
             "effets_gate": {
-                "ratio_inconnu_total": float(np.mean((surprise_ens > float(g_sur.seuil_calibre)) | (disagree > float(g_dis.seuil_calibre)))),
+                "ratio_inconnu_total": float(np.mean((surprise_ens >= float(g_sur.seuil_calibre)) | (disagree >= float(g_dis.seuil_calibre)))),
                 "ratio_inconnu_par_surprise": float(inconnu_par_surprise / max(1, len(surprise_ens))),
                 "ratio_inconnu_par_disagree": float(inconnu_par_disagree / max(1, len(surprise_ens))),
+            },
+        }
+        registre_path.write_text(json.dumps(reg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return {"journal_agent": journal_agent_path, "registre": registre_path}
+
+    if mode == "adaptive":
+        # --- paramètres adaptation ---
+        adapt = cfg.get("adaptive") if isinstance(cfg.get("adaptive"), dict) else {}
+        alpha = float(adapt.get("alpha_ema", 0.97))
+        temperature = float(adapt.get("temperature", 0.25))
+        poids_min = float(adapt.get("poids_min", 0.05))
+        if not (0.0 < alpha < 1.0):
+            raise ValueError(f"adaptive.alpha_ema doit être dans (0,1). Reçu: {alpha}")
+        if temperature <= 0.0:
+            raise ValueError(f"adaptive.temperature doit être > 0. Reçu: {temperature}")
+        if not (0.0 <= poids_min < 0.5):
+            raise ValueError(f"adaptive.poids_min doit être dans [0,0.5). Reçu: {poids_min}")
+
+        # --- calcule disagree (utile gate + registre) ---
+        disagree_t = mse_par_exemple(yhat1, yhat2)
+        disagree = disagree_t.detach().cpu().numpy().astype(float)
+
+        # --- EMA + softmax -> poids par transition ---
+        n = int(len(s1))
+        ema_s1 = np.zeros(n, dtype=float)
+        ema_s2 = np.zeros(n, dtype=float)
+        w1 = np.zeros(n, dtype=float)
+        w2 = np.zeros(n, dtype=float)
+
+        # init EMA avec la première erreur observée
+        e1 = float(s1[0])
+        e2 = float(s2[0])
+        for i in range(n):
+            e1 = alpha * e1 + (1.0 - alpha) * float(s1[i])
+            e2 = alpha * e2 + (1.0 - alpha) * float(s2[i])
+            ema_s1[i] = e1
+            ema_s2[i] = e2
+
+            # softmax sur -EMA/temperature (plus petit EMA => plus grand poids)
+            l1 = -e1 / temperature
+            l2 = -e2 / temperature
+            m = l1 if l1 >= l2 else l2
+            a1 = np.exp(l1 - m)
+            a2 = np.exp(l2 - m)
+            denom = a1 + a2
+            ww1 = float(a1 / denom)
+            ww2 = float(a2 / denom)
+
+            # plancher pour éviter l'extinction d'une hypothèse
+            if poids_min > 0.0:
+                ww1 = max(ww1, poids_min)
+                ww2 = max(ww2, poids_min)
+                s = ww1 + ww2
+                ww1 /= s
+                ww2 /= s
+
+            w1[i] = ww1
+            w2[i] = ww2
+
+        # --- yhat adaptatif + surprise ---
+        w1_t = torch.tensor(w1, device=device, dtype=yhat1.dtype).view(-1, 1)
+        w2_t = torch.tensor(w2, device=device, dtype=yhat2.dtype).view(-1, 1)
+        yhat_adapt = yhat1 * w1_t + yhat2 * w2_t
+        surprise_t = mse_par_exemple(yhat_adapt, y)
+        surprise = surprise_t.detach().cpu().numpy().astype(float)
+
+        # --- gate double (surprise + disagree) ---
+        gate_cfg = cfg.get("gate", {})
+        q_surprise = float(gate_cfg.get("quantile_surprise", gate_cfg.get("quantile", 0.90)))
+        q_disagree = float(gate_cfg.get("quantile_disagree", 0.80))  # 0.80 par défaut (sinon plateau)
+
+        g_sur = GateSurprise(ConfigGate(mode="quantile", quantile=q_surprise, seuil_connu=float(gate_cfg.get("seuil_surprise", 0.10))))
+        g_dis = GateSurprise(ConfigGate(mode="quantile", quantile=q_disagree, seuil_connu=float(gate_cfg.get("seuil_disagree", 0.10))))
+        g_sur.calibrer(torch.tensor(surprise))
+        g_dis.calibrer(torch.tensor(disagree))
+
+        journal_agent_path = run_dir / "epreuve" / "journal_agent.jsonl"
+        journal_agent_path.parent.mkdir(parents=True, exist_ok=True)
+
+        inconnu_par_surprise = 0
+        inconnu_par_disagree = 0
+        with open(journal_agent_path, "w", encoding="utf-8") as jf:
+            for idx in range(n):
+                sev = float(surprise[idx])
+                dev = float(disagree[idx])
+
+                inconnu_sur = sev >= float(g_sur.seuil_calibre)
+                inconnu_dis = dev >= float(g_dis.seuil_calibre)
+                if inconnu_sur:
+                    inconnu_par_surprise += 1
+                if inconnu_dis:
+                    inconnu_par_disagree += 1
+
+                inconnu = inconnu_sur or inconnu_dis
+                mode_gate = "inconnu_explorer" if inconnu else "connu_exploiter"
+                action = cfg["policy"]["strategie_connu"] if mode_gate == "connu_exploiter" else cfg["policy"]["strategie_inconnu"]
+
+                jf.write(
+                    json.dumps(
+                        {
+                            "idx": idx,
+                            "s1": float(s1[idx]),
+                            "s2": float(s2[idx]),
+                            "ema_s1": float(ema_s1[idx]),
+                            "ema_s2": float(ema_s2[idx]),
+                            "w1": float(w1[idx]),
+                            "w2": float(w2[idx]),
+                            "surprise": sev,
+                            "disagree": dev,
+                            "seuil_surprise": float(g_sur.seuil_calibre),
+                            "seuil_disagree": float(g_dis.seuil_calibre),
+                            "mode": mode_gate,
+                            "action": action,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+        registre_path = run_dir / "epreuve" / "registre_epistemique.json"
+        corr = float(np.corrcoef(disagree, surprise)[0, 1]) if len(disagree) > 1 else 0.0
+        reg = {
+            "experience": cfg.get("experience"),
+            "mode": "adaptive",
+            "hypotheses": {"h1": h1, "h2": h2},
+            "adaptive": {"alpha_ema": alpha, "temperature": temperature, "poids_min": poids_min},
+            "stats": {
+                "surprise": _stats_1d(surprise),
+                "disagree": _stats_1d(disagree),
+                "w1": _stats_1d(w1),
+                "w2": _stats_1d(w2),
+                "ema_s1": _stats_1d(ema_s1),
+                "ema_s2": _stats_1d(ema_s2),
+                "s1": _stats_1d(s1),
+                "s2": _stats_1d(s2),
+            },
+            "correlation_disagree_surprise": corr,
+            "gate": {
+                "seuil_surprise": float(g_sur.seuil_calibre),
+                "seuil_disagree": float(g_dis.seuil_calibre),
+                "quantile_surprise": q_surprise,
+                "quantile_disagree": q_disagree,
+            },
+            "effets_gate": {
+                "ratio_inconnu_total": float(np.mean((surprise >= float(g_sur.seuil_calibre)) | (disagree >= float(g_dis.seuil_calibre)))),
+                "ratio_inconnu_par_surprise": float(inconnu_par_surprise / max(1, n)),
+                "ratio_inconnu_par_disagree": float(inconnu_par_disagree / max(1, n)),
             },
         }
         registre_path.write_text(json.dumps(reg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

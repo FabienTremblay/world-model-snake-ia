@@ -1,0 +1,21 @@
+{
+  "id": "h2_lineaire_v1",
+  "nom": "prédiction capteurs projetés t+1 (baseline linéaire)",
+  "type": "hypothese_pred_capteurs_lineaire_v1",
+  "portee": [
+    "prediction_monde",
+    "gate"
+  ],
+  "interfaces": {
+    "entree": "capteurs_proj_vect_t",
+    "sortie": [
+      "capteurs_proj_vect_t1",
+      "surprise"
+    ]
+  },
+  "hyperparams": {
+    "note": "modèle linéaire dim->dim (capacité limitée)"
+  },
+  "version": "1.0.0",
+  "commentaire": "Hypothèse concurrente à biais différent (baseline)."
+}

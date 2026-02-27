@@ -1,0 +1,49 @@
+{
+  "experience": "JEPA-5",
+  "mode": "adaptive",
+  "adaptive": {
+    "alpha_ema": 0.97,
+    "temperature": 0.0005,
+    "poids_min": 0.05
+  },
+  "dataset_paires_pt": "artefacts/datasets/paires_capteurs.pt",
+  "capteurs": {
+    "dim_vecteur": 560
+  },
+  "hypotheses": [
+    {
+      "id": "h1",
+      "type_modele": "mlp_v1",
+      "poids_pt": "artefacts/poids/hypotheses/h1.pt",
+      "hyperparams": {
+        "hidden": 64
+      }
+    },
+    {
+      "id": "h2",
+      "type_modele": "lineaire_v1",
+      "poids_pt": "artefacts/poids/hypotheses/h2.pt",
+      "hyperparams": {}
+    }
+  ],
+  "sorties": {
+    "journal_agent": "artefacts/journaux/journal_agent.jsonl",
+    "registre_epistemique": "artefacts/journaux/registre_epistemique.json",
+    "resultats": "artefacts/resultats/resultats.json"
+  },
+  "epreuve": {
+    "batch_size": 512,
+    "seed": 123,
+    "device": "cpu"
+  },
+  "gate": {
+    "quantile_surprise": 0.9,
+    "quantile_disagree": 0.8,
+    "seuil_surprise": 0.1,
+    "seuil_disagree": 0.1
+  },
+  "policy": {
+    "strategie_inconnu": "observer_gauche_ou_droite",
+    "strategie_connu": "observer_gauche_ou_droite"
+  }
+}
