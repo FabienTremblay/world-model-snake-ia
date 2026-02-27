@@ -83,3 +83,11 @@ Les prérequis nécessaires à certains agents (ex. `SNAKE_MODELE_JOURNAL`) sont
 - ou variables d’environnement
 
 Objectif : garder le runner neutre, tout en rendant l’écosystème extensible et testable.
+
+## Analyse scientifique factorisée (SAI-A105)
+
+Le module `agent_service.app.analyse` permet d'exécuter un catalogue
+de diagnostics versionnés sur tout run expérimental.
+
+Il constitue la couche de post-traitement scientifique standard.
+Voir : docs/sai-a105_catalogue_diagnostics.md
