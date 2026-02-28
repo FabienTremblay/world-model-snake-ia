@@ -49,3 +49,20 @@ def set_minimum_v1() -> List[str]:
         DiagnosticGatePartitionV1.id,
         DiagnosticDisagreePlateauV1.id,
     ]
+
+
+# Ensembles (sets) nommés
+_LISTE_SETS = {
+    "minimum_v1": set_minimum_v1,
+    "jepa5_v1": set_minimum_v1,  # alias (mêmes diagnostics)
+}
+
+
+def liste_sets() -> List[str]:
+    return sorted(_LISTE_SETS.keys())
+
+
+def get_set(nom_set: str) -> List[str]:
+    if nom_set not in _LISTE_SETS:
+        raise KeyError(f"Set inconnu: {nom_set}. Disponibles: {liste_sets()}")
+    return _LISTE_SETS[nom_set]()

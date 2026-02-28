@@ -36,6 +36,69 @@ class DiagnosticGatePartitionV1(Diagnostic):
             return [AlerteDiagnostic("fail", "champ effets_gate manquant", "Vérifier la version du registre")]
         return []
 
+
+    def _reconstruire_partition_depuis_journal(self, contexte: ContexteRun) -> Dict[str, float] | None:
+        """Reconstruit la partition connu/inconnu depuis le journal si possible.
+
+        Hypothèse (alignée à JEPA-5):
+        - un tick est 'inconnu' si surprise >= seuil_surprise OU disagree >= seuil_disagree.
+        - on calcule aussi les contributions: surprise, disagree, et l'intersection.
+        """
+        if not contexte.journal_agent:
+            return None
+
+        n = 0
+        inconnu = 0
+        trig_surprise = 0
+        trig_disagree = 0
+        trig_both = 0
+
+        for e in contexte.journal_agent:
+            if "surprise" not in e or "disagree" not in e:
+                continue
+            # seuils peuvent être par tick (JEPA-5) ou globaux; on tente les deux
+            seuil_s = e.get("seuil_surprise")
+            seuil_d = e.get("seuil_disagree")
+            if seuil_s is None:
+                seuil_s = contexte.registre_epistemique.get("gate", {}).get("seuil_surprise")
+            if seuil_d is None:
+                seuil_d = contexte.registre_epistemique.get("gate", {}).get("seuil_disagree")
+            if seuil_s is None or seuil_d is None:
+                continue
+
+            try:
+                s = float(e["surprise"])
+                d = float(e["disagree"])
+                ss = float(seuil_s)
+                sd = float(seuil_d)
+            except Exception:
+                continue
+
+            n += 1
+            s_trig = s >= ss
+            d_trig = d >= sd
+
+            if s_trig:
+                trig_surprise += 1
+            if d_trig:
+                trig_disagree += 1
+            if s_trig and d_trig:
+                trig_both += 1
+            if s_trig or d_trig:
+                inconnu += 1
+
+        if n == 0:
+            return None
+
+        return {
+            "n": float(n),
+            "ratio_connu_total": (n - inconnu) / n,
+            "ratio_inconnu_total": inconnu / n,
+            "ratio_inconnu_surprise": trig_surprise / n,
+            "ratio_inconnu_disagree": trig_disagree / n,
+            "ratio_inconnu_surprise_et_disagree": trig_both / n,
+        }
+
     def executer(self, contexte: ContexteRun) -> ResultatDiagnostic:
         alertes_pre = self.preconditions(contexte)
         if alertes_pre:
@@ -55,6 +118,22 @@ class DiagnosticGatePartitionV1(Diagnostic):
         ratio_inconnu_disagree = effets.get("ratio_inconnu_disagree")
         ratio_connu = effets.get("ratio_connu_total")
 
+        # si le registre ne contient pas la partition, on tente de la reconstruire depuis journal_agent.jsonl
+        recon = None
+        if ratio_connu is None or ratio_inconnu_total is None or (ratio_inconnu_surprise is None and ratio_inconnu_disagree is None):
+            recon = self._reconstruire_partition_depuis_journal(contexte)
+            if recon:
+                ratio_connu = recon.get("ratio_connu_total", ratio_connu)
+                ratio_inconnu_total = recon.get("ratio_inconnu_total", ratio_inconnu_total)
+                ratio_inconnu_surprise = recon.get("ratio_inconnu_surprise", ratio_inconnu_surprise)
+                ratio_inconnu_disagree = recon.get("ratio_inconnu_disagree", ratio_inconnu_disagree)
+                ratio_inconnu_both = recon.get("ratio_inconnu_surprise_et_disagree")
+            else:
+                ratio_inconnu_both = None
+        else:
+            ratio_inconnu_both = None
+
+
         alertes: List[AlerteDiagnostic] = []
         statut = "ok"
 
@@ -62,6 +141,17 @@ class DiagnosticGatePartitionV1(Diagnostic):
         gate = reg.get("gate", {})
         seuil_surprise = gate.get("seuil_surprise")
         seuil_disagree = gate.get("seuil_disagree")
+
+        # si on ne peut pas expliquer la partition, on le signale
+        if ratio_inconnu_surprise is None or ratio_inconnu_disagree is None:
+            statut = "warn" if statut == "ok" else statut
+            alertes.append(
+                AlerteDiagnostic(
+                    "warn",
+                    "partition inconnus (surprise vs désaccord) indisponible",
+                    "Ajouter les ratios au registre OU reconstruire depuis le journal (surprise/disagree + seuils) pour expliquer la cause de l'inconnu",
+                )
+            )
 
         if seuil_surprise is None or seuil_disagree is None:
             statut = "warn"
@@ -128,6 +218,7 @@ class DiagnosticGatePartitionV1(Diagnostic):
             "ratio_inconnu_total": ratio_inconnu_total,
             "ratio_inconnu_surprise": ratio_inconnu_surprise,
             "ratio_inconnu_disagree": ratio_inconnu_disagree,
+            "ratio_inconnu_surprise_et_disagree": ratio_inconnu_both,
             "seuil_surprise": seuil_surprise,
             "seuil_disagree": seuil_disagree,
         }
@@ -145,7 +236,7 @@ class DiagnosticGatePartitionV1(Diagnostic):
             f"| ratio_connu_total | {ratio_connu} |\n"
             f"| ratio_inconnu_total | {ratio_inconnu_total} |\n"
             f"| ratio_inconnu_surprise | {ratio_inconnu_surprise} |\n"
-            f"| ratio_inconnu_disagree | {ratio_inconnu_disagree} |\n"
+            f"| ratio_inconnu_disagree | {ratio_inconnu_disagree} |\n| ratio_inconnu_surprise_et_disagree | {ratio_inconnu_both} |\n"
             f"| seuil_surprise | {seuil_surprise} |\n"
             f"| seuil_disagree | {seuil_disagree} |\n"
         ]

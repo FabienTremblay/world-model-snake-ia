@@ -56,5 +56,7 @@ def test_analyse_diagnostics_smoke(tmp_path: Path):
     assert Path(res["sortie_json"]).exists()
 
     payload = json.loads(Path(res["sortie_json"]).read_text(encoding="utf-8"))
+    assert "schema_version" in payload
+    assert payload["schema_version"] == "sai-a105.diagnostics.v1"
     assert "diagnostics" in payload
     assert len(payload["diagnostics"]) == 3
