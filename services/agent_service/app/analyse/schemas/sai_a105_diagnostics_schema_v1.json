@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sai-a105.diagnostics.v1",
+  "title": "SAI-A105 diagnostics output (v1)",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "sai-a105.diagnostics.v1"
+    },
+    "experience_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "run_dir": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "run_dir_entree": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "run_dir_resolu": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "epreuve_dir": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "date_utc": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "renderer": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "renderer_signature": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "diagnostic_id",
+          "statut",
+          "mesures",
+          "alertes",
+          "sections_rapport"
+        ],
+        "properties": {
+          "diagnostic_id": {
+            "type": "string"
+          },
+          "statut": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "warn",
+              "fail",
+              "skip",
+              "error"
+            ]
+          },
+          "resume": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mesures": {
+            "type": "object"
+          },
+          "alertes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sections_rapport": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "titre",
+                "contenu_md"
+              ],
+              "properties": {
+                "titre": {
+                  "type": "string"
+                },
+                "contenu_md": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
