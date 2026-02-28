@@ -103,3 +103,15 @@ Ces prérequis doivent être fournis via :
 - ou variables d’environnement (ex. `SNAKE_MODELE_JOURNAL`)
 
 Si les prérequis manquent, l’agent doit refuser explicitement (exception claire).
+
+## Post-traitement scientifique
+
+Après exécution d’un run :
+
+python -m agent_service.app.analyse.cli.main --run <path_run>
+
+Produit :
+- rapport_diagnostics.md
+- diagnostics.json
+
+Ce mécanisme remplace les scripts spécifiques à chaque expérience.
