@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sai-a105.diagnostics.v1.schema.json",
+  "title": "SAI-A105 Diagnostics Output (v1)",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "diagnostics"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Version du schéma de sortie (ex: 'sai-a105.diagnostics.v1').",
+      "pattern": "^sai-a105\\.diagnostics\\.v1$"
+    },
+    "experience_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Identifiant logique de l'expérience (si disponible)."
+    },
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Identifiant logique du run (si disponible)."
+    },
+    "run_dir": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Chemin absolu du run résolu (alias historique; garder pour compat)."
+    },
+    "run_dir_entree": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Chemin fourni à --run (peut être une racine 'runs')."
+    },
+    "run_dir_resolu": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Chemin du run effectivement utilisé (résolu)."
+    },
+    "epreuve_dir": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Chemin de sortie (souvent <run>/epreuve)."
+    },
+    "date_utc": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Date/heure UTC de génération si disponible (ISO 8601 recommandé).",
+      "format": "date-time"
+    },
+    "renderer": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Nom de la fonction de rendu utilisée pour le rapport md."
+    },
+    "renderer_signature": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Signature de la fonction de rendu (debug / traçabilité)."
+    },
+    "diagnostics": {
+      "type": "array",
+      "description": "Liste ordonnée de résultats de diagnostics.",
+      "items": {
+        "type": "object",
+        "required": [
+          "diagnostic_id",
+          "statut"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "diagnostic_id": {
+            "type": "string",
+            "description": "ID stable du diagnostic (ex: 'diag.gate_partition.v1')."
+          },
+          "statut": {
+            "type": "string",
+            "description": "État du diagnostic.",
+            "enum": [
+              "ok",
+              "warn",
+              "fail",
+              "skip",
+              "error"
+            ]
+          },
+          "resume": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Résumé humain en une ligne."
+          },
+          "mesures": {
+            "type": "object",
+            "description": "Mesures JSON sérialisables (machine). Clés libres, valeurs simples recommandées.",
+            "additionalProperties": true
+          },
+          "alertes": {
+            "type": "array",
+            "description": "Alertes structurées.",
+            "items": {
+              "type": "object",
+              "required": [
+                "niveau",
+                "message"
+              ],
+              "additionalProperties": true,
+              "properties": {
+                "niveau": {
+                  "type": "string",
+                  "enum": [
+                    "info",
+                    "warn",
+                    "fail"
+                  ],
+                  "description": "Sévérité."
+                },
+                "message": {
+                  "type": "string",
+                  "description": "Message court."
+                },
+                "quoi_faire": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Action recommandée (court)."
+                }
+              }
+            }
+          },
+          "fragments_md": {
+            "type": "array",
+            "description": "Fragments markdown (tableaux, notes) à intégrer dans le rapport.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}
