@@ -1,0 +1,15 @@
+schema: individu_agent_arene_v1
+individu_id: ia_demo_0001
+famille_id: fa_demo_0001
+version: 2
+politique:
+  direction: avant
+memoire_courte:
+  compteur_runs: 1
+  derniere_duree_ticks: 50
+  dernier_run_id: '1772656703078448639'
+  dernier_run_dir: /data/Dropbox/workspace/ia-snake/donnees/config/experiences/INDIVIDU_V1/artefacts/runs/2026-03-04_15h38
+provenance:
+  parent_hash: ebdc9e58633a73125743039ff1f03fe6cea33c91280a7403f9a36e6bc499d230
+  parent_run_id: null
+  run_id: '1772656703078448639'

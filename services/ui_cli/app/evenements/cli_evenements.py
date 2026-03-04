@@ -6,27 +6,35 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
+import yaml
 
+from ui_cli.app.bac_a_sable.bac_a_sable_v1 import BacASableV1
 from world_sim.app.arenes_yaml import charger_arene_v0
 from world_sim.app.monde_snake import ConfigMonde, MondeSnake
+from world_sim.app.monde_snake_evenementiel import MondeSnakeEvenementiel
 
-from services.world_sim.app.monde_snake_evenementiel import MondeSnakeEvenementiel
-from services.runner_service.app.runner_evenements_v2 import RunnerEvenementsV2, ConfigRunnerEvenementsV2
-from services.agent_service.app.individu_objet_du_monde_v1 import AgentIndividuStubV1
+from runner_service.app.runner_evenements_v2 import ConfigRunnerEvenementsV2, RunnerEvenementsV2
+
+from agent_service.app.individu.charger_individu_v1 import (
+    appliquer_evolution_post_run,
+    calculer_hash_individu,
+    charger_individu_v1,
+)
+from agent_service.app.individu.individu_objet_du_monde_v2 import IndividuAgentAreneV1ObjetDuMonde
+from agent_service.app.individu_objet_du_monde_v1 import AgentIndividuStubV1
 
 
 def _racine_projet() -> Path:
-    # services/ui_cli/app/evenements/cli_evenements.py -> parents[4] = racine projet
+    # services/ui_cli/app/evenements/cli_evenements.py -> racine projet
     return Path(__file__).resolve().parents[4]
 
 
 def _resoudre_path_arene(racine_projet: Path, arene: str) -> Path:
     """Résout un id d'arène ou un chemin vers un fichier .yml.
 
-    Convention repo (prioritaire) :
+    Convention repo (prioritaire):
       - donnees/config/arenes/<id>.yml
-    Fallback historique :
+    Fallback historique:
       - donnees/arenes/<id>.yml
     """
     p = Path(arene)
@@ -44,7 +52,7 @@ def _resoudre_path_arene(racine_projet: Path, arene: str) -> Path:
         if c.exists():
             return c
 
-    # On retourne le chemin "canonique" pour un message d'erreur utile
+    # Retourner le chemin "canonique" pour aider le message d'erreur
     return candidats[0]
 
 
@@ -79,6 +87,18 @@ def construire_parser_evenements() -> argparse.ArgumentParser:
     ap.add_argument("--seed", type=int, default=None, help="Seed monde (override).")
 
     ap.add_argument(
+        "--individu",
+        default=None,
+        help="Id d'individu (catalogue) sous donnees/catalogues/individus/<id>/. "
+        "Override experience.yml: evenements.individu_id.",
+    )
+    ap.add_argument(
+        "--promouvoir",
+        action="store_true",
+        help="En mode entrainement, promeut individu_sortie.yml vers le catalogue individus/<id>/individu.yml et archive historique.",
+    )
+    # Fallback stub (utile pour smoke)
+    ap.add_argument(
         "--direction",
         default="avant",
         choices=["avant", "gauche", "droite", "arriere"],
@@ -95,7 +115,7 @@ def construire_parser_evenements() -> argparse.ArgumentParser:
 def _appliquer_defaults_evenements(args: argparse.Namespace, cfg: dict) -> None:
     """Applique les defaults de experience.yml pour la sous-commande `evenements`.
 
-    Règle : uniquement si l'utilisateur n'a pas surchargé via CLI.
+    Règle: uniquement si l'utilisateur n'a pas surchargé via CLI.
     """
     if not isinstance(cfg, dict):
         return
@@ -138,6 +158,11 @@ def _appliquer_defaults_evenements(args: argparse.Namespace, cfg: dict) -> None:
     run_tag = ev.get("run_tag")
     if isinstance(run_tag, str) and run_tag.strip() and args.run_tag is None:
         args.run_tag = run_tag.strip()
+
+    # individu_id (default CLI = None)
+    individu_id = ev.get("individu_id")
+    if isinstance(individu_id, str) and individu_id.strip() and args.individu is None:
+        args.individu = individu_id.strip()
 
     # stub (direction/inaction)
     stub = ev.get("stub")
@@ -199,22 +224,117 @@ def main_evenements(argv: Optional[list[str]] = None) -> None:
     monde_reel = MondeSnake(cfg_base)
     monde_evt = MondeSnakeEvenementiel(monde_reel)
 
-    # --- Objet individu stub
-    direction = None if args.inaction or args.direction == "none" else str(args.direction)
-    individu = AgentIndividuStubV1(direction=direction)
+    # --- Individu (catalogue) ou stub
+    individu_entree_cfg: dict | None = None
+    individu_entree_hash: str | None = None
+    individu_sortie_hash: str | None = None
+    famille_id: str | None = None
+
+    if args.individu:
+        individu_entree_cfg = charger_individu_v1(
+            racine_projet=racine,
+            individu_id=str(args.individu),
+            valider_schema=True,
+        )
+        individu_entree_hash = calculer_hash_individu(individu_entree_cfg)
+        famille_id = str(individu_entree_cfg.get("famille_id") or "")
+
+        (run_dir / "individu_entree.yml").write_text(
+            yaml.safe_dump(individu_entree_cfg, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+
+        individu_obj = IndividuAgentAreneV1ObjetDuMonde(individu_cfg=individu_entree_cfg)
+        objets = [individu_obj]
+    else:
+        direction = None if args.inaction or args.direction == "none" else str(args.direction)
+        objets = [AgentIndividuStubV1(direction=direction)]
 
     cfg_runner = ConfigRunnerEvenementsV2(
         mode=str(args.mode),
         ticks=int(args.ticks),
         publier_ticks=bool(args.publier_ticks),
     )
-    runner = RunnerEvenementsV2(monde=monde_evt, objets=[individu], config=cfg_runner)
+    runner = RunnerEvenementsV2(monde=monde_evt, objets=objets, config=cfg_runner)
     journal = runner.run()
 
     evenements_path.write_text(
-        "".join(json.dumps(e.__dict__, ensure_ascii=False) + "\n" for e in journal),
+        "".join(json.dumps(getattr(e, "__dict__", e), ensure_ascii=False) + "\n" for e in journal),
         encoding="utf-8",
     )
+
+    # --- Traçabilité individu (runs)
+    if args.individu and individu_entree_cfg is not None and individu_entree_hash is not None:
+        if str(args.mode) == "entrainement":
+            individu_sortie_cfg = appliquer_evolution_post_run(
+                individu_entree_cfg,
+                run_id=run_id,
+                run_dir=str(run_dir),
+                ticks=int(args.ticks),
+            )
+            individu_sortie_hash = calculer_hash_individu(individu_sortie_cfg)
+
+            (run_dir / "individu_sortie.yml").write_text(
+                yaml.safe_dump(individu_sortie_cfg, sort_keys=False, allow_unicode=True),
+                encoding="utf-8",
+            )
+            (run_dir / "lineage.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "individu_agent_arene_v1",
+                        "individu_id": str(args.individu),
+                        "famille_id": famille_id,
+                        "parent": {"hash": individu_entree_hash, "run_id": None},
+                        "enfant": {"hash": individu_sortie_hash, "run_id": run_id},
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            # --- Promotion contrôlée vers catalogue
+            promotion_effectuee = False
+
+            if args.promouvoir:
+                cat_dir = racine / "donnees" / "catalogues" / "individus" / str(args.individu)
+                cat_dir.mkdir(parents=True, exist_ok=True)
+
+                hist_dir = cat_dir / "historique"
+                hist_dir.mkdir(parents=True, exist_ok=True)
+
+                # archive immuable
+                (hist_dir / f"{individu_sortie_hash}.yml").write_text(
+                    yaml.safe_dump(individu_sortie_cfg, sort_keys=False, allow_unicode=True),
+                    encoding="utf-8",
+                )
+
+                # état courant
+                (cat_dir / "individu.yml").write_text(
+                    yaml.safe_dump(individu_sortie_cfg, sort_keys=False, allow_unicode=True),
+                    encoding="utf-8",
+                )
+
+                promotion_effectuee = True
+        else:
+            if args.promouvoir:
+                raise SystemExit("promotion interdite en mode=epreuve")
+            (run_dir / "lineage.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "individu_agent_arene_v1",
+                        "individu_id": str(args.individu),
+                        "famille_id": famille_id,
+                        "parent": {"hash": individu_entree_hash, "run_id": None},
+                        "enfant": None,
+                        "note": "mode=epreuve: pas d'evolution/promotion",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
 
     if meta_path is not None:
         meta = {
@@ -227,6 +347,11 @@ def main_evenements(argv: Optional[list[str]] = None) -> None:
             "publier_ticks": bool(args.publier_ticks),
             "arene": str(args.arene),
             "arene_path": str(path_arene),
+            "individu_id": str(args.individu) if args.individu else None,
+            "famille_id": famille_id,
+            "individu_entree_hash": individu_entree_hash,
+            "individu_sortie_hash": individu_sortie_hash,
+            "promotion_effectuee": locals().get("promotion_effectuee", False),
         }
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

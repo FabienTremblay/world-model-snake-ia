@@ -1,7 +1,6 @@
 id: INDIVIDU_V1
 description: "réalisation de l'individu transportable (agent arène) + boucle événementielle"
 
-# Garder une arène stable pour comparer les runs
 arene:
   id: demo_v0
 
@@ -10,16 +9,12 @@ sorties:
   capture_stdout: true
 
 evenements:
+  individu_id: ia_demo_0001
   mode: entrainement
   ticks: 50
   publier_ticks: true
   arene: demo_v0
   seed: 123
-  stub:
-    direction: avant
-    inaction: false
 
 notes:
-  - "phase 1: individu stub -> action_motrice + tick events"
-  - "phase 2: individu transportable: individu.yaml + gabarits embarqués + mémoire courte"
-  - "phase 3: entraînement: sujets de réflexion -> registre épistémique partagé"
+  - "phase 1: individu catalogue -> politique fixe (démo) + traçabilité runs"

@@ -1,0 +1,9 @@
+schema: famille_agent_arene_v1
+famille_id: fa_demo_0001
+description: "famille démo (ADN) — gabarit minimal"
+
+gabarits_generation:
+  - id: gabarit_v1
+    description: "gabarit minimal v1"
+    politique_defaut:
+      direction: avant
