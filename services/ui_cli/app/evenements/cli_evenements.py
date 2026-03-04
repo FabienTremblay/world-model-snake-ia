@@ -13,7 +13,7 @@ from world_sim.app.arenes_yaml import charger_arene_v0
 from world_sim.app.monde_snake import ConfigMonde, MondeSnake
 from world_sim.app.monde_snake_evenementiel import MondeSnakeEvenementiel
 
-from runner_service.app.runner_evenements_v2 import ConfigRunnerEvenementsV2, RunnerEvenementsV2
+from runner.app.runner_evenements_v2 import ConfigRunnerEvenementsV2, RunnerEvenementsV2
 
 from agent_service.app.individu.charger_individu_v1 import (
     appliquer_evolution_post_run,
@@ -92,11 +92,7 @@ def construire_parser_evenements() -> argparse.ArgumentParser:
         help="Id d'individu (catalogue) sous donnees/catalogues/individus/<id>/. "
         "Override experience.yml: evenements.individu_id.",
     )
-    ap.add_argument(
-        "--promouvoir",
-        action="store_true",
-        help="En mode entrainement, promeut individu_sortie.yml vers le catalogue individus/<id>/individu.yml et archive historique.",
-    )
+
     # Fallback stub (utile pour smoke)
     ap.add_argument(
         "--direction",
@@ -293,32 +289,7 @@ def main_evenements(argv: Optional[list[str]] = None) -> None:
                 + "\n",
                 encoding="utf-8",
             )
-            # --- Promotion contrôlée vers catalogue
-            promotion_effectuee = False
-
-            if args.promouvoir:
-                cat_dir = racine / "donnees" / "catalogues" / "individus" / str(args.individu)
-                cat_dir.mkdir(parents=True, exist_ok=True)
-
-                hist_dir = cat_dir / "historique"
-                hist_dir.mkdir(parents=True, exist_ok=True)
-
-                # archive immuable
-                (hist_dir / f"{individu_sortie_hash}.yml").write_text(
-                    yaml.safe_dump(individu_sortie_cfg, sort_keys=False, allow_unicode=True),
-                    encoding="utf-8",
-                )
-
-                # état courant
-                (cat_dir / "individu.yml").write_text(
-                    yaml.safe_dump(individu_sortie_cfg, sort_keys=False, allow_unicode=True),
-                    encoding="utf-8",
-                )
-
-                promotion_effectuee = True
         else:
-            if args.promouvoir:
-                raise SystemExit("promotion interdite en mode=epreuve")
             (run_dir / "lineage.json").write_text(
                 json.dumps(
                     {
@@ -351,7 +322,6 @@ def main_evenements(argv: Optional[list[str]] = None) -> None:
             "famille_id": famille_id,
             "individu_entree_hash": individu_entree_hash,
             "individu_sortie_hash": individu_sortie_hash,
-            "promotion_effectuee": locals().get("promotion_effectuee", False),
         }
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
