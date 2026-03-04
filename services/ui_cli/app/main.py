@@ -443,7 +443,7 @@ def construire_parser() -> argparse.ArgumentParser:
         description="Exécute des épisodes snake en mode headless (batch) et journalise episodes.jsonl.",
         epilog=(
             "Sous-commandes disponibles (voir l'aide dédiée):\n"
-            "  ui_cli pipeline --help\n"
+            "  ui_cli pipeline --help\n  ui_cli evenements --help\n"
             "  ui_cli preparer-agent --help\n"
             "\n"
             "Note: si tu exécutes `ui_cli --help`, tu es dans le mode legacy (exécution d'épisodes)."
@@ -625,187 +625,195 @@ def main(argv: list[str] | None = None) -> None:
 
         main_pipeline(argv[1:])
         return
-    # ------------------------------------------------------------
 
-    args = construire_parser().parse_args(argv)
-    racine = _racine_projet()
+    if len(argv) >= 1 and argv[0] == "evenements":
+        from ui_cli.app.evenements.cli_evenements import main_evenements
 
-    # Identifiant d'exécution (partagé partout)
-    run_id = str(time.time_ns())
+        main_evenements(argv[1:])
+        return
 
-    # Discipline: exiger un bac à sable d'expérience (pas d'écriture dans ./artefacts)
-    if not args.experience:
-        raise SystemExit("ui_cli: --experience est requis (le répertoire ./artefacts n'est plus utilisé).")
+        # ------------------------------------------------------------
 
-    # Si on lance via un bac à sable (expérience), on résout un répertoire de run dédié.
-    exp_dir: Path | None = None
-    run_dir: Path | None = None
-    stdout_path: Path | None = None
-    meta_path: Path | None = None
-    if True:
+        args = construire_parser().parse_args(argv)
+        racine = _racine_projet()
 
-        bac = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
-        rapport = bac.assurer_structure()
-        if rapport.get("creations"):
-            print(
-                json.dumps(
-                    {
-                        "event": "bac_a_sable_cree",
-                        "experience": str(args.experience),
-                        "experience_dir": rapport["experience_dir"],
-                        "creations": rapport["creations"],
-                    },
-                    ensure_ascii=False,
+        # Identifiant d'exécution (partagé partout)
+        run_id = str(time.time_ns())
+
+        # Discipline: exiger un bac à sable d'expérience (pas d'écriture dans ./artefacts)
+        if not args.experience:
+            raise SystemExit("ui_cli: --experience est requis (le répertoire ./artefacts n'est plus utilisé).")
+
+        # Si on lance via un bac à sable (expérience), on résout un répertoire de run dédié.
+        exp_dir: Path | None = None
+        run_dir: Path | None = None
+        stdout_path: Path | None = None
+        meta_path: Path | None = None
+        if True:
+
+            bac = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
+            rapport = bac.assurer_structure()
+            if rapport.get("creations"):
+                print(
+                    json.dumps(
+                        {
+                            "event": "bac_a_sable_cree",
+                            "experience": str(args.experience),
+                            "experience_dir": rapport["experience_dir"],
+                            "creations": rapport["creations"],
+                        },
+                        ensure_ascii=False,
+                    )
                 )
-            )
-        else:
-            print(
-                json.dumps(
-                    {
-                        "event": "bac_a_sable_detecte",
-                        "experience": str(args.experience),
-                        "experience_dir": str(bac.experience_dir),
-                    },
-                    ensure_ascii=False,
+            else:
+                print(
+                    json.dumps(
+                        {
+                            "event": "bac_a_sable_detecte",
+                            "experience": str(args.experience),
+                            "experience_dir": str(bac.experience_dir),
+                        },
+                        ensure_ascii=False,
+                    )
                 )
-            )
 
-        # defaults CLI depuis experience.yml (si l'utilisateur n'a pas surchargé)
-        _appliquer_defaults_experience(args=args, cfg=bac.cfg)
+            # defaults CLI depuis experience.yml (si l'utilisateur n'a pas surchargé)
+            _appliquer_defaults_experience(args=args, cfg=bac.cfg)
 
-        exp_dir = bac.experience_dir
-        run_dir, journal_path, stdout_path, meta_path = bac.preparer_run(
-            run_tag=str(args.run_tag) if args.run_tag else None,
-            run_id=run_id,
-        )
-        args.journal = str(journal_path)
-
-        if args.metrics is None:
-            args.metrics = str(run_dir / "metrics.jsonl")
-
-
-        # agent-personne-path : si relatif, l'ancrer aussi sur l'expérience/run (évite ./)
-        if getattr(args, "agent_personne_path", None):
-            args.agent_personne_path = str(
-                _resoudre_path_utilisateur(
-                    racine_projet=racine,
-                    exp_dir=bac.experience_dir,
-                    run_dir=run_dir,
-                    chemin=str(args.agent_personne_path),
-                )
-            )
-
-        # env modèle monde
-        payload_mm = bac.appliquer_env_modele_monde()
-        print(json.dumps(payload_mm, ensure_ascii=False))
-
-    path_arene = _resoudre_path_arene(racine, args.arene)
-    ar = charger_arene_v0(path_arene)
-    os.environ["SNAKE_ARENE_PATH"] = str(path_arene)
-
-    # config monde (identique à runner/app/main.py, sauf overrides CLI)
-    base_seed = int(args.seed) if args.seed is not None else int(ar.seed)
-    niveau_bruit_defaut = int(ar.niveau_bruit_defaut)
-    if args.niveau_bruit is not None:
-        niveau_bruit_defaut = int(args.niveau_bruit)
-
-    cfg_base = ConfigMonde(
-        largeur=ar.largeur,
-        hauteur=ar.hauteur,
-        seed=base_seed,
-        nb_nourriture=ar.nb_nourriture,
-        niveau_bruit=niveau_bruit_defaut,
-        arene_id=ar.id,
-        epsilon_par_pas=ar.epsilon_par_pas,
-        bonus_fin=ar.bonus_fin,
-        porte_position=ar.porte_position,
-        porte_ouverte_initiale=(ar.porte_etat_initial == "ouverte"),
-        regle_ouverture_porte=ar.regle_ouverture,
-        palette=ar.palette,
-    )
-
-    # ------------------------------------------------------------
-    # Journalisation canonique (runner/app/journal.py)
-    # On pilote le chemin via SNAKE_JOURNAL_PATH pour réutiliser le même composant.
-    journal_path = Path(args.journal)
-    journal_path.parent.mkdir(parents=True, exist_ok=True)
-    if args.truncate and journal_path.exists():
-        journal_path.unlink()
-    os.environ["SNAKE_JOURNAL_PATH"] = str(journal_path)
-
-    # Si capture stdout/stderr demandée, activer un tee vers stdout.log (seulement avec --experience).
-    capture_effectif = bool(args.capture_stdout)
-    if args.experience and exp_dir is not None:
-        # si experience.yml demande la capture, on l'applique par défaut
-        bac2 = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
-        capture_effectif = capture_effectif or bac2.capture_stdout_defaut()
-
-    if capture_effectif and stdout_path is not None:
-        sys.stdout.write(f"[ui_cli] capture stdout/stderr -> {stdout_path}\n")
-    capture_ctx = (
-        _capture_stdout_stderr(stdout_path) if (capture_effectif and stdout_path is not None) else _nullcontext()
-    )
-
-    # meta.json pour rendre le run reproductible / traçable
-    if meta_path is not None:
-        meta = {
-            "run_id": run_id,
-            "experience": args.experience,
-            "run_tag": args.run_tag,
-            "arene": args.arene,
-            "arene_path": str(path_arene),
-            "agent": args.agent,
-            "latent": args.latent,
-            "episodes": int(args.episodes),
-            "max_ticks": int(args.max_ticks),
-            "seed": args.seed,
-            "seed_episode": bool(args.seed_episode),
-            "niveau_bruit": args.niveau_bruit,
-            "journal": str(journal_path),
-            "metrics": args.metrics,
-        }
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-    # Exécution (journal + monde) sous capture éventuelle.
-    with capture_ctx:
-        journal = JournalEpisodes(racine_projet=racine)
-        metrics_fp = None
-        try:
-            if args.metrics:
-                metrics_path = Path(args.metrics)
-                metrics_path.parent.mkdir(parents=True, exist_ok=True)
-                metrics_fp = metrics_path.open("w", encoding="utf-8")
-
-            agent = _fabriquer_agent(args)
-            print({"event":"agent_instancie","type":type(agent).__name__,"module":type(agent).__module__}, flush=True)
-
-            # exécution (noyau runner commun — cours 5)
-            params_exec = ParametresExecution(
-                episodes=int(args.episodes),
-                max_ticks=int(args.max_ticks),
-                seed_episode=bool(args.seed_episode),
-            )
-
-            hook_apres_action = _hook_apres_action_pour_cli(metrics_fp, agent, mode_latent=str(args.latent))
-
-            executer_episodes_headless(
+            exp_dir = bac.experience_dir
+            run_dir, journal_path, stdout_path, meta_path = bac.preparer_run(
+                run_tag=str(args.run_tag) if args.run_tag else None,
                 run_id=run_id,
-                cfg_base=cfg_base,
-                agent=agent,
-                journal=journal,
-                params=params_exec,
-                perception=None,
-                encoder_latent=encoder_latent,
-                mode_latent=str(args.latent),
-                hook_apres_action=hook_apres_action,
             )
+            args.journal = str(journal_path)
+
+            if args.metrics is None:
+                args.metrics = str(run_dir / "metrics.jsonl")
 
 
-        finally:
-            journal.fermer()
-            if metrics_fp is not None:
-                metrics_fp.close()
+            # agent-personne-path : si relatif, l'ancrer aussi sur l'expérience/run (évite ./)
+            if getattr(args, "agent_personne_path", None):
+                args.agent_personne_path = str(
+                    _resoudre_path_utilisateur(
+                        racine_projet=racine,
+                        exp_dir=bac.experience_dir,
+                        run_dir=run_dir,
+                        chemin=str(args.agent_personne_path),
+                    )
+                )
+
+            # env modèle monde
+            payload_mm = bac.appliquer_env_modele_monde()
+            print(json.dumps(payload_mm, ensure_ascii=False))
+
+        path_arene = _resoudre_path_arene(racine, args.arene)
+        ar = charger_arene_v0(path_arene)
+        os.environ["SNAKE_ARENE_PATH"] = str(path_arene)
+
+        # config monde (identique à runner/app/main.py, sauf overrides CLI)
+        base_seed = int(args.seed) if args.seed is not None else int(ar.seed)
+        niveau_bruit_defaut = int(ar.niveau_bruit_defaut)
+        if args.niveau_bruit is not None:
+            niveau_bruit_defaut = int(args.niveau_bruit)
+
+        cfg_base = ConfigMonde(
+            largeur=ar.largeur,
+            hauteur=ar.hauteur,
+            seed=base_seed,
+            nb_nourriture=ar.nb_nourriture,
+            niveau_bruit=niveau_bruit_defaut,
+            arene_id=ar.id,
+            epsilon_par_pas=ar.epsilon_par_pas,
+            bonus_fin=ar.bonus_fin,
+            porte_position=ar.porte_position,
+            porte_ouverte_initiale=(ar.porte_etat_initial == "ouverte"),
+            regle_ouverture_porte=ar.regle_ouverture,
+            palette=ar.palette,
+        )
+
+        # ------------------------------------------------------------
+        # Journalisation canonique (runner/app/journal.py)
+        # On pilote le chemin via SNAKE_JOURNAL_PATH pour réutiliser le même composant.
+        journal_path = Path(args.journal)
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        if args.truncate and journal_path.exists():
+            journal_path.unlink()
+        os.environ["SNAKE_JOURNAL_PATH"] = str(journal_path)
+
+        # Si capture stdout/stderr demandée, activer un tee vers stdout.log (seulement avec --experience).
+        capture_effectif = bool(args.capture_stdout)
+        if args.experience and exp_dir is not None:
+            # si experience.yml demande la capture, on l'applique par défaut
+            bac2 = BacASableV1.charger_depuis_id(racine_projet=racine, experience_id=str(args.experience))
+            capture_effectif = capture_effectif or bac2.capture_stdout_defaut()
+
+        if capture_effectif and stdout_path is not None:
+            sys.stdout.write(f"[ui_cli] capture stdout/stderr -> {stdout_path}\n")
+        capture_ctx = (
+            _capture_stdout_stderr(stdout_path) if (capture_effectif and stdout_path is not None) else _nullcontext()
+        )
+
+        # meta.json pour rendre le run reproductible / traçable
+        if meta_path is not None:
+            meta = {
+                "run_id": run_id,
+                "experience": args.experience,
+                "run_tag": args.run_tag,
+                "arene": args.arene,
+                "arene_path": str(path_arene),
+                "agent": args.agent,
+                "latent": args.latent,
+                "episodes": int(args.episodes),
+                "max_ticks": int(args.max_ticks),
+                "seed": args.seed,
+                "seed_episode": bool(args.seed_episode),
+                "niveau_bruit": args.niveau_bruit,
+                "journal": str(journal_path),
+                "metrics": args.metrics,
+            }
+            meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+        # Exécution (journal + monde) sous capture éventuelle.
+        with capture_ctx:
+            journal = JournalEpisodes(racine_projet=racine)
+            metrics_fp = None
+            try:
+                if args.metrics:
+                    metrics_path = Path(args.metrics)
+                    metrics_path.parent.mkdir(parents=True, exist_ok=True)
+                    metrics_fp = metrics_path.open("w", encoding="utf-8")
+
+                agent = _fabriquer_agent(args)
+                print({"event":"agent_instancie","type":type(agent).__name__,"module":type(agent).__module__}, flush=True)
+
+                # exécution (noyau runner commun — cours 5)
+                params_exec = ParametresExecution(
+                    episodes=int(args.episodes),
+                    max_ticks=int(args.max_ticks),
+                    seed_episode=bool(args.seed_episode),
+                )
+
+                hook_apres_action = _hook_apres_action_pour_cli(metrics_fp, agent, mode_latent=str(args.latent))
+
+                executer_episodes_headless(
+                    run_id=run_id,
+                    cfg_base=cfg_base,
+                    agent=agent,
+                    journal=journal,
+                    params=params_exec,
+                    perception=None,
+                    encoder_latent=encoder_latent,
+                    mode_latent=str(args.latent),
+                    hook_apres_action=hook_apres_action,
+                )
+
+
+            finally:
+                journal.fermer()
+                if metrics_fp is not None:
+                    metrics_fp.close()
 
 
 if __name__ == "__main__":
     main()
+
