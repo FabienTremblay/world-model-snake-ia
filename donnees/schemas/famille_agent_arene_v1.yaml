@@ -1,0 +1,26 @@
+schema: famille_agent_arene_v1
+description: >
+  Gabarit autonome de génération d'individus d'agent en arène.
+champs_obligatoires:
+  - famille_id
+  - version
+  - architecture
+  - conventions
+famille_id: "fa_exemple_0001"
+version: "2026-03-04"
+architecture:
+  tronc: {tronc_id: "tronc_v1", classe: "TroncRouteurV1", params: {dim_tronc: 256}}
+  canaux:
+    - canal_id: "c1_vision"
+      instruments_autorises: ["camera_grille"]
+      latents: {court: {dim: 64}, long: {dim: 64}}
+  reflexes:
+    - reflexe_id: "reflexe_v1"
+      classe: "ReflexePolicyV1"
+  tetes:
+    - tete_id: "tete_valeur_v1"
+      role: "valeur"
+conventions:
+  registre_epistemique:
+    schema_classes: "classes_v1"
+    schema_sujets_reflexion: "sujets_reflexion_v1"

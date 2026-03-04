@@ -76,6 +76,28 @@ Mémoire par canal :
 
 Mₖ,ₜ = M_canal(oₖ,ₜʳᵃʷ, zₖ,ₜᶠᵃˢᵗ)
 
+## Nature de la mémoire
+
+Il est nécessaire de distinguer strictement :
+
+1. Mémoire courte (épisodique)
+   - Propre à l’instance.
+   - Alimentée en situation d’arène.
+   - Non partagée.
+   - Disparaît avec l’instance.
+
+2. Mémoire longue (consolidation individuelle)
+   - Propre à l’instance.
+   - Peut être alimentée à la suite d’un traitement conscient approfondi.
+   - Ne constitue pas une ontologie partagée.
+   - Ne correspond pas au registre épistémique.
+
+Aucune mémoire n’est globale ou inter-individuelle.
+
+Toute structure partagée entre agents est produite par le registre
+épistémique et intégrée uniquement lors de l’entraînement
+par mise à jour des paramètres internes.
+
 ---
 
 # II. Classification de voie

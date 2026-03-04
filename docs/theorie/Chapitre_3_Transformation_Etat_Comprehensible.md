@@ -198,6 +198,15 @@ Il dépend :
 -   du budget d'attention
 -   des paramètres appris
 
+La mémoire mₜ utilisée dans la représentation latente
+est propre à l’instance incarnée.
+
+Elle ne correspond ni à une base de données globale
+ni à une ontologie partagée.
+
+Toute révision structurelle des paramètres internes
+est réalisée uniquement en phase d’entraînement,
+à partir du registre épistémique.
 ------------------------------------------------------------------------
 
 # Synthèse

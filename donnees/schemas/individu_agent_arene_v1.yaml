@@ -1,0 +1,30 @@
+schema: individu_agent_arene_v1
+description: >
+  Individu transportable/chiffrable : identité + (poids + mémoire) + gabarit(s) embarqué(s).
+champs_obligatoires:
+  - individu_id
+  - version
+  - famille_id
+  - gabarits_embarques
+  - chemins
+  - securite
+
+individu_id: "ia_exemple_0001"
+version: "2026-03-04"
+
+# Traçabilité minimale (et reproduction future)
+famille_id: "fa_exemple_0001"
+gabarits_embarques:
+  - famille_id: "fa_exemple_0001"
+    version: "2026-03-04"
+    chemin: "gabarits/fa_exemple_0001.yaml"
+
+chemins:
+  poids: "poids/"
+  memoire: "memoire/"
+  schemas: "schemas/"
+
+securite:
+  manifest: "manifest.json"   # hashes des fichiers internes
+  signature: null             # optionnel
+  chiffrement: "optionnel"    # ex. age/gpg en dehors du runtime

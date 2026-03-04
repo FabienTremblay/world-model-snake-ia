@@ -50,7 +50,16 @@ def test_analyse_diagnostics_smoke(tmp_path: Path):
     ]
     (epreuve / "journal_agent.jsonl").write_text("\n".join(json.dumps(x) for x in lignes) + "\n", encoding="utf-8")
 
-    res = executer(str(run_dir))
+    # API stricte : `executer(run_dir, diagnostics, out_md, out_json)`
+    # - diagnostics : configuration minimaliste (le contenu exact est interprété par l'analyse)
+    # - out_md/out_json : chemins de sortie
+    diagnostics = {}
+    out_md = str(epreuve / "rapport_diagnostics.md")
+    out_json = str(epreuve / "rapport_diagnostics.json")
+    res = executer(str(run_dir), diagnostics, out_md, out_json)
+
+    # Sanity : l'appel retourne quelque chose et les sorties existent si l'implémentation les écrit
+    assert res is not None
 
     assert Path(res["rapport_md"]).exists()
     assert Path(res["sortie_json"]).exists()

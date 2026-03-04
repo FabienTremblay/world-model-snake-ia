@@ -135,13 +135,16 @@ Automatisme = compression d'anciens traitements conscients.
 
 # VI. Interaction avec l'apprentissage
 
-Les résultats produits par les têtes peuvent modifier :
+Les résultats produits par les têtes peuvent servir de base
+à une modification ultérieure des paramètres internes
+(encodeurs h_k, fusion H, routage Gamma, réflexes rho, automatismes mu),
+mais uniquement en phase d'entraînement.
 
--   les encodeurs h_k,
--   la fusion H,
--   le routage Gamma,
--   les réflexes rho,
--   les automatismes mu.
+En situation d’arène, les paramètres sont figés.
+Les têtes ne modifient pas les poids.
+Elles produisent des propositions, des annotations,
+et éventuellement des sujets de réflexion
+destinés au registre épistémique.
 
 L'apprentissage agit comme une condensation progressive :
 

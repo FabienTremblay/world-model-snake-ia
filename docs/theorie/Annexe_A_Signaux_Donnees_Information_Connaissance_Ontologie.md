@@ -154,6 +154,26 @@ L'ontologie permet :
 
 Elle opère principalement au niveau des têtes conscientes.
 
+### Distinction Ontologie / Mémoire
+
+Il est essentiel de distinguer :
+
+- Mémoire longue : structure individuelle et périssable,
+  propre à une instance incarnée.
+
+- Ontologie : organisation conceptuelle stabilisée
+  par entraînement à partir du registre épistémique.
+
+L’ontologie n’est pas un stockage interne.
+Elle correspond à une structuration des paramètres
+et des classes conceptuelles partagées
+entre générations d’agents.
+
+Ainsi :
+
+Mémoire ≠ Ontologie
+Connaissance individuelle ≠ Structure conceptuelle partagée
+
 ------------------------------------------------------------------------
 
 # VI. Chaîne de transformation complète
